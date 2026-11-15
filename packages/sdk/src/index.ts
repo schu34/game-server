@@ -130,13 +130,21 @@ export type JoinResponse = { playerId: PlayerId; key: string; game: GameView };
 
 export type GameTypeInfo = { type: string; minPlayers: number; maxPlayers: number };
 
-export type ErrorCode =
-  | 'NOT_FOUND'
-  | 'UNAUTHORIZED'
-  | 'NOT_YOUR_TURN'
-  | 'INVALID_MOVE'
-  | 'INVALID_REQUEST'
-  | 'CONFLICT'
-  | 'INTERNAL';
+/**
+ * Error codes the server can return. An object rather than a TS `enum`, because enums
+ * aren't erasable syntax and Node's type stripping rejects them. The values are the
+ * strings sent on the wire, so clients can compare against either.
+ */
+export const ErrorCode = {
+  NOT_FOUND: 'NOT_FOUND',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  NOT_YOUR_TURN: 'NOT_YOUR_TURN',
+  INVALID_MOVE: 'INVALID_MOVE',
+  INVALID_REQUEST: 'INVALID_REQUEST',
+  CONFLICT: 'CONFLICT',
+  INTERNAL: 'INTERNAL',
+} as const;
+
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export type ErrorResponse = { error: { code: ErrorCode; message: string } };
