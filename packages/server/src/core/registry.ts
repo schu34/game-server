@@ -1,12 +1,12 @@
 import type { GameDefinition, GameTypeInfo, Json } from '@gs/sdk';
 
-/** A game definition with its state/config types erased. */
-export type AnyGameDefinition = GameDefinition<Json, Json>;
+/** A game definition with its state, move and config types erased. */
+export type AnyGameDefinition = GameDefinition<Json, unknown, Json>;
 
 export class GameRegistry {
   readonly #definitions = new Map<string, AnyGameDefinition>();
 
-  register<S extends Json, C extends Json>(definition: GameDefinition<S, C>): this {
+  register<TState extends Json, TMove, TConfig extends Json>(definition: GameDefinition<TState, TMove, TConfig>): this {
     const { type, minPlayers, maxPlayers } = definition;
     if (!type) throw new Error('Game definition must have a type');
     if (this.#definitions.has(type)) throw new Error(`Game type "${type}" is already registered`);
