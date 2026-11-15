@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineGame, err, noConfig, ok } from '@gs/sdk';
+import { defineGame, err, noConfig, ok, type GameView } from '@gs/sdk';
 import { GameError, GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
 import { counterGame, secretPickGame, type CounterState, type SecretPickState } from './fixtures/games.ts';
 
@@ -8,6 +8,12 @@ function setup() {
   const registry = new GameRegistry().register(counterGame).register(secretPickGame);
   const store = new MemoryStore();
   return { manager: new GameManager({ registry, store }), store, registry };
+}
+
+/** The state of a started game; fails the test if the game is still in the lobby. */
+function stateOf<TState = unknown>(view: GameView): TState {
+  assert.ok(view.status !== 'lobby', `expected a started game, got status ${view.status}`);
+  return view.state as TState;
 }
 
 async function rejects(promise: Promise<unknown>, code: string) {
@@ -27,7 +33,7 @@ describe('GameManager lifecycle (sequential game)', () => {
     const { manager } = setup();
     const game = await manager.create('counter');
     assert.equal(game.status, 'lobby');
-    assert.equal(game.state, null);
+    assert.ok(!('state' in game)); // no state until the game starts
 
     await manager.join(game.id, 'Ann');
     await manager.join(game.id, 'Ben');
@@ -164,7 +170,7 @@ describe('parseMove → applyMove', () => {
     const view = await manager.move(game.id, key, { word: 'hi' });
     assert.deepEqual(calls.parse.at(-1), [{ word: 'hi' }, { last: null }, 'p1']);
     assert.deepEqual(calls.apply, [[{ word: 'HI' }, 'p1']]); // the parsed value, not the raw input
-    assert.deepEqual(view.state, { last: 'HI' });
+    assert.deepEqual(stateOf(view), { last: 'HI' });
   });
 });
 
@@ -179,7 +185,22 @@ describe('serialization', () => {
 
     const restored = new GameManager({ registry, store: MemoryStore.fromSnapshot(store.snapshot()) });
     const view = await restored.move(game.id, ben.key, { add: 3 });
-    assert.equal((view.state as CounterState).count, 5);
+    assert.equal(stateOf<CounterState>(view).count, 5);
+  });
+
+  it('stores no state for lobby games, and always stores it once started', async () => {
+    const { manager, store } = setup();
+    const game = await manager.create('counter');
+    const ann = await manager.join(game.id, 'Ann');
+    await manager.join(game.id, 'Ben');
+    const lobby = (await store.get(game.id))!;
+    assert.equal(lobby.status, 'lobby');
+    assert.ok(!('state' in lobby));
+
+    await manager.start(game.id, ann.key);
+    const started = (await store.get(game.id))!;
+    assert.equal(started.status, 'active');
+    assert.ok(started.state !== null && typeof started.state === 'object');
   });
 
   it('never stores raw keys', async () => {
@@ -223,16 +244,16 @@ describe('simultaneous moves (secret-pick)', () => {
 
     const afterAnn = await manager.move(gameId, ann.key, { pick: 7 });
     assert.deepEqual(afterAnn.activePlayers, ['p2']);
-    assert.deepEqual((afterAnn.state as SecretPickState).pending, { p1: 7 }); // Ann sees her own pick
+    assert.deepEqual(stateOf<SecretPickState>(afterAnn).pending, { p1: 7 }); // Ann sees her own pick
 
     // Ben and spectators know Ann committed, but not what she picked.
-    assert.deepEqual(((await manager.get(gameId, ben.key)).state as SecretPickState).pending, { p1: null });
-    assert.deepEqual(((await manager.get(gameId)).state as SecretPickState).pending, { p1: null });
+    assert.deepEqual(stateOf<SecretPickState>(await manager.get(gameId, ben.key)).pending, { p1: null });
+    assert.deepEqual(stateOf<SecretPickState>(await manager.get(gameId)).pending, { p1: null });
 
     await rejects(manager.move(gameId, ann.key, { pick: 3 }), 'NOT_YOUR_TURN'); // no double-submit
 
     const resolved = await manager.move(gameId, ben.key, { pick: 5 });
-    const state = resolved.state as SecretPickState;
+    const state = stateOf<SecretPickState>(resolved);
     assert.deepEqual(state.pending, {});
     assert.deepEqual(state.history, [{ p1: 7, p2: 5 }]);
     assert.deepEqual(state.scores, { p1: 1, p2: 0 });
@@ -255,6 +276,6 @@ describe('simultaneous moves (secret-pick)', () => {
       manager.move(gameId, ben.key, { pick: 6 }),
     ]);
     assert.ok(a && b);
-    assert.deepEqual(((await manager.get(gameId)).state as SecretPickState).history, [{ p1: 4, p2: 6 }]);
+    assert.deepEqual(stateOf<SecretPickState>(await manager.get(gameId)).history, [{ p1: 4, p2: 6 }]);
   });
 });

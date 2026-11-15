@@ -4,7 +4,7 @@ import type { GameView, Json, JoinResponse, PlayerId } from '@gs/sdk';
 import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
-import type { GameRecord, PlayerRecord } from './record.ts';
+import type { GameRecord, LobbyRecord, PlayerRecord, StartedRecord } from './record.ts';
 import type { AnyGameDefinition, GameRegistry } from './registry.ts';
 import { MemoryStore, type GameStore } from './store.ts';
 
@@ -61,7 +61,7 @@ export class GameManager {
     assertJson(parsedConfig, `$config(${type}.parseConfig)`);
 
     const timestamp = this.#now().toISOString();
-    const record: GameRecord = {
+    const record: LobbyRecord = {
       id: randomUUID(),
       type,
       status: 'lobby',
@@ -69,7 +69,6 @@ export class GameManager {
       config: parsedConfig,
       seed: randomBytes(16).toString('hex'),
       players: [],
-      state: null,
       outcome: null,
       moves: [],
       createdAt: timestamp,
@@ -92,10 +91,10 @@ export class GameManager {
       const { key, keyHash } = issueKey();
       const player: PlayerRecord = { id: `p${record.players.length + 1}`, name: name.trim(), keyHash };
       record.players.push(player);
-      if (record.players.length === definition.maxPlayers) this.#start(definition, record);
+      const next = record.players.length === definition.maxPlayers ? this.#start(definition, record) : record;
 
-      await this.#commit(record);
-      return { playerId: player.id, key, game: this.#toView(definition, record, player.id) };
+      await this.#commit(next);
+      return { playerId: player.id, key, game: this.#toView(definition, next, player.id) };
     });
   }
 
@@ -108,9 +107,9 @@ export class GameManager {
       if (record.players.length < definition.minPlayers) {
         throw new GameError('CONFLICT', `Need at least ${definition.minPlayers} players to start`);
       }
-      this.#start(definition, record);
-      await this.#commit(record);
-      return this.#toView(definition, record, player.id);
+      const started = this.#start(definition, record);
+      await this.#commit(started);
+      return this.#toView(definition, started, player.id);
     });
   }
 
@@ -124,7 +123,7 @@ export class GameManager {
         throw new GameError('CONFLICT', `Expected version ${options.expectedVersion} but game is at ${record.version}`);
       }
 
-      const state = record.state as Json;
+      const { state } = record; // narrowed to a started record by the status checks above
       if (!definition.activePlayers(state).includes(player.id)) {
         throw new GameError('NOT_YOUR_TURN', 'It is not your turn');
       }
@@ -167,17 +166,16 @@ export class GameManager {
 
   // -------------------------------------------------------------------------
 
-  #start(definition: AnyGameDefinition, record: GameRecord): void {
+  /** Run setup and turn a lobby record into a started one. */
+  #start(definition: AnyGameDefinition, record: LobbyRecord): StartedRecord {
     const state = definition.setup({
       players: record.players.map((p) => p.id),
       config: record.config,
       seed: record.seed,
     });
     assertJson(state, `$state(${record.type}.setup)`);
-    record.state = state;
-    record.status = 'active';
-    record.outcome = definition.outcome(state);
-    if (record.outcome) record.status = 'finished';
+    const outcome = definition.outcome(state);
+    return { ...record, status: outcome ? 'finished' : 'active', state, outcome };
   }
 
   async #load(gameId: string): Promise<{ record: GameRecord; definition: AnyGameDefinition }> {
@@ -202,17 +200,22 @@ export class GameManager {
   }
 
   #toView(definition: AnyGameDefinition, record: GameRecord, viewer: PlayerId | null): GameView {
-    const state = record.state;
-    return {
+    const base = {
       id: record.id,
       type: record.type,
-      status: record.status,
       version: record.version,
       players: record.players.map(({ id, name }) => ({ id, name })),
-      activePlayers: record.status === 'active' && state !== null ? definition.activePlayers(state) : [],
       outcome: record.outcome,
-      state: state === null ? null : definition.view ? definition.view(state, viewer) : state,
       you: viewer,
+    };
+    if (record.status === 'lobby') return { ...base, status: 'lobby', activePlayers: [] };
+
+    const { state } = record;
+    return {
+      ...base,
+      status: record.status,
+      activePlayers: record.status === 'active' ? definition.activePlayers(state) : [],
+      state: definition.view ? definition.view(state, viewer) : state,
     };
   }
 
