@@ -22,7 +22,7 @@ let finished!: () => void;
 const gameOver = new Promise<void>((resolve) => (finished = resolve));
 const subscription = await spectator.subscribe(game.id, (view: GameView) => {
   console.log(`\n[v${view.version}] status=${view.status} active=${view.activePlayers.join(',') || '-'}`);
-  if (view.state) console.log(renderBoard((view.state as TicTacToeState).board));
+  if (view.status !== 'lobby') console.log(renderBoard((view.state as TicTacToeState).board));
   if (view.status === 'finished') finished();
 });
 
@@ -37,6 +37,7 @@ const players = new Map([
 for (;;) {
   const view = (await alice.get(game.id))!;
   if (view.status === 'finished') break;
+  if (view.status === 'lobby') throw new Error('game did not start');
   const state = view.state as TicTacToeState;
   const empty = state.board.flatMap((cell, i) => (cell === null ? [i] : []));
   const cell = empty[Math.floor(Math.random() * empty.length)]!;
