@@ -47,6 +47,11 @@ describe('tic-tac-toe rules', () => {
     assert.deepEqual(taken, { ok: false, error: 'Cell 4 is already taken' });
   });
 
+  it('takes no config', () => {
+    assert.equal(ticTacToe.parseConfig(undefined).ok, true);
+    assert.equal(ticTacToe.parseConfig({ size: 4 }).ok, false);
+  });
+
   it('detects a row win', () => {
     const state = play([0, 3, 1, 4, 2]); // X: 0,1,2
     assert.deepEqual(ticTacToe.outcome(state), { winners: ['p1'] });

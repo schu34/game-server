@@ -1,4 +1,4 @@
-import { defineGame, err, ok, type Outcome, type PlayerId } from '@gs/sdk';
+import { defineGame, err, noConfig, ok, type Outcome, type PlayerId } from '@gs/sdk';
 
 export type Mark = 'X' | 'O';
 export type Cell = Mark | null;
@@ -38,6 +38,7 @@ export const ticTacToe = defineGame<TicTacToeState, TicTacToeMove>({
   type: 'tic-tac-toe',
   minPlayers: 2,
   maxPlayers: 2,
+  parseConfig: noConfig,
 
   setup({ players }) {
     const [x, o] = players as [PlayerId, PlayerId];
