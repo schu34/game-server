@@ -16,7 +16,7 @@ npm run demo      # two bots play tic-tac-toe against the running server
 | Package | Purpose | May import |
 |---|---|---|
 | `packages/sdk` (`@gs/sdk`) | Game contract + wire types | nothing |
-| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport (`http/`) | `@gs/sdk`, `node:*` |
+| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `node:*`; `http/` may also use `hono` |
 | `packages/client` (`@gs/client`) | Generic fetch/SSE client | `@gs/sdk` |
 | `games/tic-tac-toe` | POC game | `@gs/sdk` (its `cli/` may also use `@gs/client`) |
 | `apps/dev-server` | Wires games into the server | anything |
