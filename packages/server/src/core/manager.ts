@@ -50,9 +50,20 @@ export class GameManager {
     this.#now = now;
     this.#onError = onError;
     this.#events.setMaxListeners(0);
-    this.#locks = new GameLocks({
+    this.#locks = new GameLocks<Loaded, GameRecord, CommitOptions>({
       load: (gameId) => this.#load(gameId),
-      commit: (record, options) => this.#commit(record, options),
+      // The only code that writes an existing game. It lives here, not in a method, so nothing
+      // in this class can reach it except through a transaction (see #withLock).
+      commit: async (record, { bumpVersion = true } = {}) => {
+        // The record came from tx.load() in the same transaction, so its type is registered.
+        const definition = this.#registry.get(record.type);
+        if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
+        if (bumpVersion) record.version += 1;
+        record.updatedAt = this.#now().toISOString();
+        await this.#store.put(record);
+        this.#schedule(definition, record);
+        this.#events.emit(`change:${record.id}`, record.version);
+      },
     });
   }
 
@@ -109,7 +120,7 @@ export class GameManager {
     };
     // The one write outside a transaction: the id is fresh and nobody has seen it yet, so no
     // other operation can be racing on this game. A lobby has no deadline to schedule and no
-    // subscribers to notify, so a bare put is all #commit would do anyway.
+    // subscribers to notify, so a bare put is all a commit would do anyway.
     await this.#store.put(record);
     return this.#toView(definition, record, null);
   }
@@ -276,18 +287,6 @@ export class GameManager {
     const player = findPlayerByKey(record.players, key);
     if (!player) throw new GameError(ErrorCode.UNAUTHORIZED, 'Missing or invalid player key for this game');
     return player;
-  }
-
-  /** Persist, re-arm the deadline timer and notify. Only reachable through a transaction (see #withLock). */
-  async #commit(record: GameRecord, { bumpVersion = true }: CommitOptions = {}): Promise<void> {
-    // The record came from #load inside the same transaction, so its type is registered.
-    const definition = this.#registry.get(record.type);
-    if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
-    if (bumpVersion) record.version += 1;
-    record.updatedAt = this.#now().toISOString();
-    await this.#store.put(record);
-    this.#schedule(definition, record);
-    this.#events.emit(`change:${record.id}`, record.version);
   }
 
   #toView(definition: AnyGameDefinition, record: GameRecord, viewer: PlayerId | null): GameView {
