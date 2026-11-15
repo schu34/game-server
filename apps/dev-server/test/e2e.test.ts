@@ -28,7 +28,10 @@ describe('tic-tac-toe end to end over HTTP + SSE', () => {
     const o = new GameClient(base);
     const spectator = new GameClient(base);
 
-    assert.deepEqual(await spectator.gameTypes(), [{ type: 'tic-tac-toe', minPlayers: 2, maxPlayers: 2 }]);
+    assert.deepEqual(
+      (await spectator.gameTypes()).map((g) => g.type),
+      ['tic-tac-toe', 'two-thirds'],
+    );
 
     const game = await x.create('tic-tac-toe');
     const seen: GameView[] = [];

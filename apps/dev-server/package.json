@@ -5,7 +5,8 @@
   "type": "module",
   "dependencies": {
     "@gs/server": "*",
-    "@gs/game-tic-tac-toe": "*"
+    "@gs/game-tic-tac-toe": "*",
+    "@gs/game-two-thirds": "*"
   },
   "devDependencies": {
     "@gs/client": "*",
