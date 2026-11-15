@@ -26,10 +26,11 @@ throwaway fixture games (`packages/server/test/fixtures`), never against a real 
 
 ## Writing a game
 
-A game is pure functions over JSON state (`GameDefinition` in `packages/sdk/src/index.ts`):
+A game is pure functions over JSON state (`GameDefinition<TState, TMove, TConfig>` in `packages/sdk/src/index.ts`):
 
 - `setup({ players, config, seed })` → initial state
-- `applyMove(state, move, player)` → `ok(nextState)` | `err(message)` — validates untrusted input; the only transition
+- `parseMove(input, state, player)` → `ok(move)` | `err(message)` — validates an untrusted move from a client into a typed `TMove`
+- `applyMove(state, move, player)` → `ok(nextState)` | `err(message)` — applies a parsed move; the only transition
 - `activePlayers(state)` → who may act now (several players = a simultaneous phase)
 - `outcome(state)` → `null` | `{ winners }` | `{ draw: true }`
 - `view?(state, viewer)` → redacted state. **Required for any game with hidden information.**
