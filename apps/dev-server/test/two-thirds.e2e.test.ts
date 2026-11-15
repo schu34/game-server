@@ -20,7 +20,10 @@ after(() => {
 });
 
 type View = SimultaneousView<number> & { game: TwoThirdsGame };
-const sim = (game: GameView) => game.state as View;
+const sim = (game: GameView): View => {
+  assert.ok(game.status !== 'lobby', `expected a started game, got status ${game.status}`);
+  return game.state as View;
+};
 
 /** Subscribe as a spectator, recording every view; `until` waits for a matching one. */
 async function spectate(gameId: string) {
