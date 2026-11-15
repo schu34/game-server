@@ -18,7 +18,8 @@ npm run demo      # two bots play tic-tac-toe against the running server
 | `packages/sdk` (`@gs/sdk`) | Game contract + wire types | nothing |
 | `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `node:*`; `http/` may also use `hono` |
 | `packages/client` (`@gs/client`) | Generic fetch/SSE client | `@gs/sdk` |
-| `games/tic-tac-toe` | POC game | `@gs/sdk` (its `cli/` may also use `@gs/client`) |
+| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk` (its `cli/` may also use `@gs/client`) |
+| `games/two-thirds` | POC simultaneous-decision game | `@gs/sdk` |
 | `apps/dev-server` | Wires games into the server | anything |
 
 `scripts/check-boundaries.ts` enforces these rules on every `npm test`. The server is tested only against
@@ -42,7 +43,7 @@ Register the game in `apps/dev-server/src/app.ts`.
 ### Everyone decides at once: `defineSimultaneousGame`
 
 For games with no turn order, where every player decides and then all decisions are processed together
-(`packages/sdk/src/simultaneous.ts`). You write:
+(`packages/sdk/src/simultaneous.ts`, example: `games/two-thirds`). You write:
 
 - `parseDecision(input, state, player)` → validate one decision when it's submitted (same argument order as `parseMove`)
 - `resolve(state, decisions, { round, missing, timedOut, now })` → process the whole round
