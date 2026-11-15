@@ -9,7 +9,7 @@
  */
 import type { GameDefinition, Json, Outcome, PlayerId, Result, SetupContext, TransitionContext } from './index.ts';
 
-export type Decisions<D extends Json> = { [player: PlayerId]: D };
+export type Decisions<TDecision extends Json> = { [player: PlayerId]: TDecision };
 
 export type ResolveContext = TransitionContext & {
   /** 1-based number of the round being resolved. */
@@ -19,25 +19,33 @@ export type ResolveContext = TransitionContext & {
   timedOut: boolean;
 };
 
-export type SimultaneousGameDefinition<S extends Json, D extends Json, C extends Json = Json> = {
+/**
+ * @typeParam TState    Your game state (without the round bookkeeping, which the helper adds).
+ * @typeParam TDecision One player's validated decision. JSON, because pending decisions are stored in state.
+ * @typeParam TConfig   Your validated config.
+ */
+export type SimultaneousGameDefinition<TState extends Json, TDecision extends Json, TConfig extends Json = Json> = {
   type: string;
   minPlayers: number;
   maxPlayers: number;
-  parseConfig?(input: unknown): Result<C>;
+  parseConfig?(input: unknown): Result<TConfig>;
 
   /** Initial game state. */
-  setup(ctx: SetupContext<C>): S;
+  setup(ctx: SetupContext<TConfig>): TState;
 
-  /** Validate one player's untrusted decision. Called on submit, so bad input is rejected immediately. */
-  parseDecision(state: S, input: unknown, player: PlayerId): Result<D>;
+  /**
+   * Validate one player's untrusted decision. Called on submit, so bad input is rejected immediately.
+   * Same argument order as `GameDefinition.parseMove`.
+   */
+  parseDecision(input: unknown, state: TState, player: PlayerId): Result<TDecision>;
 
   /** Process all decisions for the round and return the next state. Starts the next round. */
-  resolve(state: S, decisions: Decisions<D>, ctx: ResolveContext): S;
+  resolve(state: TState, decisions: Decisions<TDecision>, ctx: ResolveContext): TState;
 
-  outcome(state: S): Outcome | null;
+  outcome(state: TState): Outcome | null;
 
   /** Who must decide this round (e.g. exclude eliminated players). Default: everyone. */
-  deciders?(state: S, players: PlayerId[]): PlayerId[];
+  deciders?(state: TState, players: PlayerId[]): PlayerId[];
 
   /** May players replace their decision until the round resolves? Default false (decisions are final). */
   allowRevision?: boolean;
@@ -47,23 +55,23 @@ export type SimultaneousGameDefinition<S extends Json, D extends Json, C extends
    * whatever was submitted, and `ctx.missing` lists who didn't decide. Your `resolve` decides
    * what missing means (ignore them, apply a default, eliminate them...).
    */
-  timeLimitMs?(state: S): number | null;
+  timeLimitMs?(state: TState): number | null;
 
   /** Redact your own game state per viewer. Pending decisions are hidden for you regardless. */
-  view?(state: S, viewer: PlayerId | null): Json;
+  view?(state: TState, viewer: PlayerId | null): Json;
 };
 
 /** The state the server stores for a simultaneous game: your state plus round bookkeeping. */
-export type SimultaneousState<S extends Json, D extends Json> = {
+export type SimultaneousState<TState extends Json, TDecision extends Json> = {
   players: PlayerId[];
   round: number;
   roundStartedAt: number;
-  decisions: Decisions<D>;
-  game: S;
+  decisions: Decisions<TDecision>;
+  game: TState;
 };
 
 /** What clients see. Other players' pending decisions are never included. */
-export type SimultaneousView<D extends Json> = {
+export type SimultaneousView<TDecision extends Json> = {
   round: number;
   /** Players who must decide this round. */
   deciders: PlayerId[];
@@ -71,15 +79,15 @@ export type SimultaneousView<D extends Json> = {
   decided: PlayerId[];
   waitingOn: PlayerId[];
   /** Your own pending decision this round, if any. */
-  yourDecision: D | null;
+  yourDecision: TDecision | null;
   roundDeadline: number | null;
   game: Json;
 };
 
-export function defineSimultaneousGame<S extends Json, D extends Json, C extends Json = Json>(
-  spec: SimultaneousGameDefinition<S, D, C>,
-): GameDefinition<SimultaneousState<S, D>, C> {
-  type State = SimultaneousState<S, D>;
+export function defineSimultaneousGame<TState extends Json, TDecision extends Json, TConfig extends Json = Json>(
+  spec: SimultaneousGameDefinition<TState, TDecision, TConfig>,
+): GameDefinition<SimultaneousState<TState, TDecision>, TDecision, TConfig> {
+  type State = SimultaneousState<TState, TDecision>;
 
   const deciders = (state: State) => (spec.deciders ? spec.deciders(state.game, state.players) : state.players);
   const undecided = (state: State) => deciders(state).filter((p) => !(p in state.decisions));
@@ -96,7 +104,7 @@ export function defineSimultaneousGame<S extends Json, D extends Json, C extends
     return { ...state, game, round: round + 1, roundStartedAt: now, decisions: {} };
   };
 
-  const definition: GameDefinition<State, C> = {
+  const definition: GameDefinition<State, TDecision, TConfig> = {
     type: spec.type,
     minPlayers: spec.minPlayers,
     maxPlayers: spec.maxPlayers,
@@ -105,12 +113,13 @@ export function defineSimultaneousGame<S extends Json, D extends Json, C extends
       return { players: ctx.players, round: 1, roundStartedAt: ctx.now, decisions: {}, game: spec.setup(ctx) };
     },
 
-    applyMove(state, input, player, ctx) {
+    parseMove(input, state, player) {
       if (player in state.decisions && !spec.allowRevision) return { ok: false, error: 'You have already decided this round' };
-      const decision = spec.parseDecision(state.game, input, player);
-      if (!decision.ok) return decision;
+      return spec.parseDecision(input, state.game, player);
+    },
 
-      const next: State = { ...state, decisions: { ...state.decisions, [player]: decision.value } };
+    applyMove(state, decision, player, ctx) {
+      const next: State = { ...state, decisions: { ...state.decisions, [player]: decision } };
       return { ok: true, value: undecided(next).length === 0 ? resolveRound(next, ctx.now, false) : next };
     },
 
@@ -121,7 +130,7 @@ export function defineSimultaneousGame<S extends Json, D extends Json, C extends
 
     outcome: (state) => spec.outcome(state.game),
 
-    view(state, viewer): SimultaneousView<D> {
+    view(state, viewer): SimultaneousView<TDecision> {
       const all = deciders(state);
       return {
         round: state.round,

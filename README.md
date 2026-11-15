@@ -44,7 +44,7 @@ Register the game in `apps/dev-server/src/app.ts`.
 For games with no turn order, where every player decides and then all decisions are processed together
 (`packages/sdk/src/simultaneous.ts`). You write:
 
-- `parseDecision(state, input, player)` → validate one decision when it's submitted
+- `parseDecision(input, state, player)` → validate one decision when it's submitted (same argument order as `parseMove`)
 - `resolve(state, decisions, { round, missing, timedOut, now })` → process the whole round
 
 The helper handles the rest: it collects decisions in any order, hides pending decisions from other players and

@@ -14,7 +14,7 @@ function sumGame(options: { allowRevision?: boolean; timeLimitMs?: number } = {}
     ...(options.timeLimitMs ? { timeLimitMs: () => options.timeLimitMs! } : {}),
     setup: ({ players }) => ({ totals: Object.fromEntries(players.map((p) => [p, 0])), eliminated: [], rounds: 2, log: [] }),
     deciders: (state, players) => players.filter((p) => !state.eliminated.includes(p)),
-    parseDecision: (_state, input) => (Number.isInteger(input) ? ok(input as number) : err('pick an integer')),
+    parseDecision: (input) => (Number.isInteger(input) ? ok(input as number) : err('pick an integer')),
     resolve(state, decisions, { missing, timedOut }) {
       const totals = { ...state.totals };
       for (const [p, n] of Object.entries(decisions)) totals[p] = (totals[p] ?? 0) + n;
@@ -24,7 +24,7 @@ function sumGame(options: { allowRevision?: boolean; timeLimitMs?: number } = {}
   });
 }
 
-type S = SimultaneousState<SumState, number>;
+type State = SimultaneousState<SumState, number>;
 const start = (game: ReturnType<typeof sumGame>, players = ['a', 'b', 'c'], now = 1000) =>
   game.setup({ players, config: null, seed: 's', now });
 
@@ -32,8 +32,11 @@ function unwrap<T>(result: Result<T>): T {
   if (!result.ok) throw new Error(result.error);
   return result.value;
 }
-const decide = (game: ReturnType<typeof sumGame>, state: S, player: string, n: unknown, now = 1000) =>
-  game.applyMove(state, n, player, { now });
+/** Parse then apply, the way the server does. */
+function decide(game: ReturnType<typeof sumGame>, state: State, player: string, n: unknown, now = 1000): Result<State> {
+  const parsed = game.parseMove(n, state, player);
+  return parsed.ok ? game.applyMove(state, parsed.value, player, { now }) : parsed;
+}
 
 describe('defineSimultaneousGame', () => {
   it('waits for every decider, then resolves all decisions together', () => {
