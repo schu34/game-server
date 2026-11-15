@@ -255,9 +255,12 @@ export class GameManager {
    * A key that doesn't belong to this game is rejected rather than silently downgraded.
    */
   async get(gameId: string, key?: string): Promise<GameView> {
-    const { record, definition } = await this.#load(gameId);
-    const viewer = key === undefined ? null : this.#authenticate(record, key).id;
-    return this.#toView(definition, record, viewer);
+    // A read lock: waits for any write in progress on this game, so it never sees a half-done one.
+    return this.#locks.read(gameId, async (reader) => {
+      const { record, definition } = await reader.load();
+      const viewer = key === undefined ? null : this.#authenticate(record, key).id;
+      return this.#toView(definition, record, viewer);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -311,10 +314,11 @@ export class GameManager {
   }
 
   /**
-   * Run operations on the same game one at a time (needed once the store is truly async).
-   * `fn` gets the only handle that can commit a record of this game; it stops working once `fn` settles.
+   * Take the game's write lock: `fn` runs alone, after every earlier read and write on the game.
+   * It gets the only handle that can commit a record of this game, which stops working once `fn` settles.
+   * Never call `get()` on the same game from inside `fn`: it would wait for `fn` to finish.
    */
   #withLock<T>(gameId: string, fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    return this.#locks.run(gameId, fn);
+    return this.#locks.write(gameId, fn);
   }
 }

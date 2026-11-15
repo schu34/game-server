@@ -49,7 +49,9 @@ you couldn't.
   same locked callback, using the `tx` it is given: `tx.load()` then `tx.commit(next)`. `tx` is the
   only way to commit, and it refuses once the lock is released or for another game's record (see
   `core/locks.ts`). Don't call `#store.put` directly; `create()` is the one exception, for a
-  brand-new id. `get()` may stay lock-free because it only reads.
+  brand-new id. `get()` takes the read lock, so it waits for writes in progress and
+  runs alongside other reads. Never call `get()` from inside a write on the same game: it would wait
+  for itself.
 - **Every outgoing state goes through the game's `view`.** That covers responses, SSE and anything
   new you add. Never send the raw record: key hashes, the seed and the move log stay server-side.
   The tests assert this; keep them passing and extend them for new endpoints.
