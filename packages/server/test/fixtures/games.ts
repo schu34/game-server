@@ -8,7 +8,9 @@ import { defineGame, err, ok, type PlayerId } from '@gs/sdk';
 
 export type CounterState = { players: PlayerId[]; turn: number; count: number; target: number };
 
-export const counterGame = defineGame<CounterState, { target: number }>({
+export type CounterMove = { add: 1 | 2 | 3 };
+
+export const counterGame = defineGame<CounterState, CounterMove, { target: number }>({
   type: 'counter',
   minPlayers: 2,
   maxPlayers: 3,
@@ -18,9 +20,11 @@ export const counterGame = defineGame<CounterState, { target: number }>({
     return Number.isInteger(target) && (target as number) > 0 ? ok({ target: target as number }) : err('target must be a positive integer');
   },
   setup: ({ players, config }) => ({ players, turn: 0, count: 0, target: config.target }),
-  applyMove(state, move) {
-    const add = (move as { add?: unknown } | null)?.add;
-    if (add !== 1 && add !== 2 && add !== 3) return err('add must be 1, 2 or 3');
+  parseMove(input) {
+    const add = (input as { add?: unknown } | null)?.add;
+    return add === 1 || add === 2 || add === 3 ? ok({ add }) : err('add must be 1, 2 or 3');
+  },
+  applyMove(state, { add }) {
     const count = state.count + add;
     return ok({ ...state, count, turn: count >= state.target ? state.turn : (state.turn + 1) % state.players.length });
   },
@@ -38,7 +42,9 @@ export type SecretPickState = {
   scores: { [player: PlayerId]: number };
 };
 
-export const secretPickGame = defineGame<SecretPickState, { rounds: number }>({
+export type SecretPickMove = { pick: number };
+
+export const secretPickGame = defineGame<SecretPickState, SecretPickMove, { rounds: number }>({
   type: 'secret-pick',
   minPlayers: 2,
   maxPlayers: 4,
@@ -53,11 +59,14 @@ export const secretPickGame = defineGame<SecretPickState, { rounds: number }>({
     history: [],
     scores: Object.fromEntries(players.map((p) => [p, 0])),
   }),
-  applyMove(state, move, player) {
-    const pick = (move as { pick?: unknown } | null)?.pick;
-    if (!Number.isInteger(pick) || (pick as number) < 1 || (pick as number) > 10) return err('pick must be 1-10');
-
-    const pending = { ...state.pending, [player]: pick as number };
+  parseMove(input) {
+    const pick = (input as { pick?: unknown } | null)?.pick;
+    return Number.isInteger(pick) && (pick as number) >= 1 && (pick as number) <= 10
+      ? ok({ pick: pick as number })
+      : err('pick must be 1-10');
+  },
+  applyMove(state, { pick }, player) {
+    const pending = { ...state.pending, [player]: pick };
     if (Object.keys(pending).length < state.players.length) return ok({ ...state, pending });
 
     // Last commitment arrived: reveal and resolve the round in this same transition.

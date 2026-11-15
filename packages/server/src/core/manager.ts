@@ -140,7 +140,10 @@ export class GameManager {
         throw new GameError('INVALID_MOVE', (error as Error).message);
       }
 
-      const result = definition.applyMove(state, moveJson, player.id);
+      const parsed = definition.parseMove(moveJson, state, player.id);
+      if (!parsed.ok) throw new GameError('INVALID_MOVE', parsed.error);
+
+      const result = definition.applyMove(state, parsed.value, player.id);
       if (!result.ok) throw new GameError('INVALID_MOVE', result.error);
       assertJson(result.value, `$state(${record.type}.applyMove)`);
 

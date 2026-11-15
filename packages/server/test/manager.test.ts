@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineGame, ok } from '@gs/sdk';
+import { defineGame, err, ok } from '@gs/sdk';
 import { GameError, GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
 import { counterGame, secretPickGame, type CounterState, type SecretPickState } from './fixtures/games.ts';
 
@@ -132,6 +132,40 @@ describe('GameManager lifecycle (sequential game)', () => {
   });
 });
 
+describe('parseMove → applyMove', () => {
+  it('applyMove only ever sees moves that parseMove accepted', async () => {
+    const calls: { parse: unknown[][]; apply: unknown[][] } = { parse: [], apply: [] };
+    const echo = defineGame<{ last: string | null }, { word: string }>({
+      type: 'echo',
+      minPlayers: 1,
+      maxPlayers: 1,
+      setup: () => ({ last: null }),
+      parseMove(input, state, player) {
+        calls.parse.push([input, state, player]);
+        const word = (input as { word?: unknown } | null)?.word;
+        return typeof word === 'string' ? ok({ word: word.toUpperCase() }) : err('word must be a string');
+      },
+      applyMove(_state, move, player) {
+        calls.apply.push([move, player]);
+        return ok({ last: move.word });
+      },
+      activePlayers: () => ['p1'],
+      outcome: () => null,
+    });
+    const manager = new GameManager({ registry: new GameRegistry().register(echo) });
+    const game = await manager.create('echo');
+    const { key } = await manager.join(game.id, 'Solo');
+
+    await rejects(manager.move(game.id, key, { word: 7 }), 'INVALID_MOVE');
+    assert.equal(calls.apply.length, 0);
+
+    const view = await manager.move(game.id, key, { word: 'hi' });
+    assert.deepEqual(calls.parse.at(-1), [{ word: 'hi' }, { last: null }, 'p1']);
+    assert.deepEqual(calls.apply, [[{ word: 'HI' }, 'p1']]); // the parsed value, not the raw input
+    assert.deepEqual(view.state, { last: 'HI' });
+  });
+});
+
 describe('serialization', () => {
   it('records survive a full snapshot/restore and the game continues', async () => {
     const { manager, store, registry } = setup();
@@ -159,6 +193,7 @@ describe('serialization', () => {
       minPlayers: 1,
       maxPlayers: 1,
       setup: () => ({ when: new Date() as never }),
+      parseMove: () => ok(null),
       applyMove: (s) => ok(s),
       activePlayers: () => [],
       outcome: () => null,
