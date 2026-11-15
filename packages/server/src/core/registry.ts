@@ -13,6 +13,9 @@ export class GameRegistry {
     if (!Number.isInteger(minPlayers) || minPlayers < 1 || !Number.isInteger(maxPlayers) || maxPlayers < minPlayers) {
       throw new Error(`Game type "${type}" has invalid player counts (${minPlayers}..${maxPlayers})`);
     }
+    if (!!definition.deadline !== !!definition.onDeadline) {
+      throw new Error(`Game type "${type}" must define both deadline and onDeadline, or neither`);
+    }
     this.#definitions.set(type, definition as unknown as AnyGameDefinition);
     return this;
   }

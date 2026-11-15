@@ -28,19 +28,28 @@ throwaway fixture games (`packages/server/test/fixtures`), never against a real 
 
 A game is pure functions over JSON state (`GameDefinition<TState, TMove, TConfig>` in `packages/sdk/src/index.ts`):
 
-- `setup({ players, config, seed })` → initial state
+- `setup({ players, config, seed, now })` → initial state
 - `parseMove(input, state, player)` → `ok(move)` | `err(message)` — validates an untrusted move from a client into a typed `TMove`
-- `applyMove(state, move, player)` → `ok(nextState)` | `err(message)` — applies a parsed move; the only transition
+- `applyMove(state, move, player, { now })` → `ok(nextState)` | `err(message)` — applies a parsed move; the main transition
 - `activePlayers(state)` → who may act now (several players = a simultaneous phase)
 - `outcome(state)` → `null` | `{ winners }` | `{ draw: true }`
 - `view?(state, viewer)` → redacted state. **Required for any game with hidden information.**
 - `parseConfig(input)` → validated config (`undefined` if none was sent); use `noConfig` if the game takes none
-
-Simultaneous moves: keep commitments in state (e.g. `pending[player]`), list uncommitted players in
-`activePlayers`, resolve inside `applyMove` when the last one arrives, and hide `pending` in `view`.
-See `secretPickGame` in the server test fixtures.
+- `deadline?(state)` / `onDeadline?(state, { now })` → timing primitives (below)
 
 Register the game in `apps/dev-server/src/app.ts`.
+
+### Timing primitives
+
+Games never read clocks. The server passes `now` into `setup` and `applyMove`, and games store timestamps in state.
+To act when time runs out, a game implements both:
+
+- `deadline(state)` → epoch ms when it next needs attention, or `null`
+- `onDeadline(state, { now })` → the next state (skip a turn, auto-resolve a round, forfeit a player…)
+
+The server arms a timer from `deadline(state)` after every change, so a move that pushes the deadline back cancels
+the old one. Because the deadline comes from state, the server can rebuild every timer after a restart:
+call `manager.restoreTimers()` at startup. Clients see the current deadline as `GameView.deadline` for countdowns.
 
 ## HTTP API
 
@@ -69,4 +78,4 @@ JSON strings, so a game that returns non-serializable state fails immediately. `
 ## Not in v1
 
 Persistent accounts, per-player SSE streams (needs a query-string token), automatic SSE reconnection in
-`@gs/client`, turn timers, and removing finished or abandoned games.
+`@gs/client`, and removing finished or abandoned games.

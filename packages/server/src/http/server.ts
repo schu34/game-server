@@ -18,7 +18,7 @@ export type GameServerOptions = {
   maxBodyBytes?: number;
   /** SSE heartbeat interval in ms. Default 15s. */
   heartbeatMs?: number;
-  /** Called for unexpected (500) errors. Default: console.error. */
+  /** Called for unexpected errors (500s, failed deadline timers). Default: console.error. */
   onError?: (error: unknown) => void;
 };
 
@@ -34,7 +34,11 @@ const STATUS_BY_CODE: Record<ErrorCode, ContentfulStatusCode> = {
 
 /** Create a Node HTTP server exposing the generic game API. Call `.listen()` on the result. */
 export function createGameServer(options: GameServerOptions): { server: Server; manager: GameManager } {
-  const manager = new GameManager({ registry: options.registry, ...(options.store ? { store: options.store } : {}) });
+  const manager = new GameManager({
+    registry: options.registry,
+    ...(options.store ? { store: options.store } : {}),
+    ...(options.onError ? { onError: options.onError } : {}),
+  });
   const app = createGameApp(manager, options);
   return { server: createAdaptorServer({ fetch: app.fetch }) as Server, manager };
 }

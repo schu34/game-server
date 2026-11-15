@@ -4,7 +4,7 @@ import { ErrorCode, type GameView, type Json, type JoinResponse, type PlayerId }
 import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
-import type { GameRecord, LobbyRecord, PlayerRecord, StartedRecord } from './record.ts';
+import type { GameRecord, LobbyRecord, MoveRecord, PlayerRecord, StartedRecord } from './record.ts';
 import type { AnyGameDefinition, GameRegistry } from './registry.ts';
 import { MemoryStore, type GameStore } from './store.ts';
 
@@ -13,6 +13,8 @@ export type GameManagerOptions = {
   store?: GameStore;
   /** Injectable clock for tests. */
   now?: () => Date;
+  /** Receives errors from background work (deadline timers). Default: console.error. */
+  onError?: (error: unknown) => void;
 };
 
 export type MoveOptions = {
@@ -21,6 +23,8 @@ export type MoveOptions = {
 };
 
 const MAX_NAME_LENGTH = 40;
+/** setTimeout's ceiling (~24.8 days). Longer deadlines are re-checked when this fires. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * Transport-agnostic game orchestration: lifecycle, auth, turn enforcement,
@@ -32,12 +36,32 @@ export class GameManager {
   readonly #now: () => Date;
   readonly #events = new EventEmitter();
   readonly #locks = new Map<string, Promise<unknown>>();
+  readonly #timers = new Map<string, NodeJS.Timeout>();
+  readonly #onError: (error: unknown) => void;
 
-  constructor({ registry, store = new MemoryStore(), now = () => new Date() }: GameManagerOptions) {
+  constructor({ registry, store = new MemoryStore(), now = () => new Date(), onError = console.error }: GameManagerOptions) {
     this.#registry = registry;
     this.#store = store;
     this.#now = now;
+    this.#onError = onError;
     this.#events.setMaxListeners(0);
+  }
+
+  /**
+   * Re-arm deadline timers for every active game in the store. Call once at startup when
+   * using a store that already holds games (e.g. restored from a snapshot).
+   */
+  async restoreTimers(): Promise<void> {
+    for (const record of await this.#store.list()) {
+      const definition = this.#registry.get(record.type);
+      if (definition) this.#schedule(definition, record);
+    }
+  }
+
+  /** Cancel all pending deadline timers (e.g. on shutdown). */
+  close(): void {
+    for (const timer of this.#timers.values()) clearTimeout(timer);
+    this.#timers.clear();
   }
 
   get registry(): GameRegistry {
@@ -93,7 +117,7 @@ export class GameManager {
       record.players.push(player);
       const next = record.players.length === definition.maxPlayers ? this.#start(definition, record) : record;
 
-      await this.#commit(next);
+      await this.#commit(definition, next);
       return { playerId: player.id, key, game: this.#toView(definition, next, player.id) };
     });
   }
@@ -108,7 +132,7 @@ export class GameManager {
         throw new GameError(ErrorCode.CONFLICT, `Need at least ${definition.minPlayers} players to start`);
       }
       const started = this.#start(definition, record);
-      await this.#commit(started);
+      await this.#commit(definition, started);
       return this.#toView(definition, started, player.id);
     });
   }
@@ -139,18 +163,66 @@ export class GameManager {
       const parsed = definition.parseMove(moveJson, state, player.id);
       if (!parsed.ok) throw new GameError(ErrorCode.INVALID_MOVE, parsed.error);
 
-      const result = definition.applyMove(state, parsed.value, player.id);
+      const result = definition.applyMove(state, parsed.value, player.id, { now: this.#now().getTime() });
       if (!result.ok) throw new GameError(ErrorCode.INVALID_MOVE, result.error);
-      assertJson(result.value, `$state(${record.type}.applyMove)`);
 
-      record.state = result.value;
-      record.version += 1;
-      record.moves.push({ player: player.id, move: moveJson, version: record.version, at: this.#now().toISOString() });
-      record.outcome = definition.outcome(record.state);
-      if (record.outcome) record.status = 'finished';
-
-      await this.#commit(record, { bumpVersion: false });
+      await this.#transition(definition, record, result.value, { kind: 'move', player: player.id, move: moveJson });
       return this.#toView(definition, record, player.id);
+    });
+  }
+
+  /** Apply a new game state: validate, log, update outcome, persist, notify. */
+  async #transition(
+    definition: AnyGameDefinition,
+    record: StartedRecord,
+    next: unknown,
+    entry: Pick<MoveRecord, 'kind' | 'player' | 'move'>,
+  ): Promise<void> {
+    assertJson(next, `$state(${record.type}.${entry.kind === 'move' ? 'applyMove' : 'onDeadline'})`);
+    record.state = next;
+    record.version += 1;
+    record.moves.push({ ...entry, version: record.version, at: this.#now().toISOString() });
+    record.outcome = definition.outcome(next);
+    if (record.outcome) record.status = 'finished';
+    await this.#commit(definition, record, { bumpVersion: false });
+  }
+
+  /** (Re)arm the timer for a game's current deadline, if it has one. */
+  #schedule(definition: AnyGameDefinition, record: GameRecord): void {
+    clearTimeout(this.#timers.get(record.id));
+    this.#timers.delete(record.id);
+    if (record.status !== 'active' || record.state === null || !definition.deadline) return;
+    const at = definition.deadline(record.state);
+    if (at === null) return;
+
+    const delay = Math.min(Math.max(0, at - this.#now().getTime()), MAX_TIMER_MS);
+    const timer = setTimeout(() => {
+      this.#timers.delete(record.id);
+      this.#fireDeadline(record.id).catch(this.#onError);
+    }, delay);
+    timer.unref();
+    this.#timers.set(record.id, timer);
+  }
+
+  async #fireDeadline(gameId: string): Promise<void> {
+    await this.#withLock(gameId, async () => {
+      const { record, definition } = await this.#load(gameId);
+      if (record.status !== 'active' || record.state === null || !definition.deadline || !definition.onDeadline) return;
+
+      // State may have changed since the timer was armed; only act if the deadline really has passed.
+      const at = definition.deadline(record.state);
+      const now = this.#now().getTime();
+      if (at === null) return;
+      if (at > now) return this.#schedule(definition, record);
+
+      const next = definition.onDeadline(record.state, { now });
+      // Guard against a game bug that would otherwise re-fire this timer in a tight loop.
+      assertJson(next, `$state(${record.type}.onDeadline)`);
+      const nextAt = definition.outcome(next) ? null : definition.deadline(next);
+      if (nextAt !== null && nextAt <= at) {
+        throw new Error(`${record.type}.onDeadline did not move the deadline forward (game ${gameId}); state left unchanged`);
+      }
+      await this.#transition(definition, record, next, { kind: 'deadline', player: null, move: null });
     });
   }
 
@@ -172,6 +244,7 @@ export class GameManager {
       players: record.players.map((p) => p.id),
       config: record.config,
       seed: record.seed,
+      now: this.#now().getTime(),
     });
     assertJson(state, `$state(${record.type}.setup)`);
     const outcome = definition.outcome(state);
@@ -192,10 +265,11 @@ export class GameManager {
     return player;
   }
 
-  async #commit(record: GameRecord, { bumpVersion = true } = {}): Promise<void> {
+  async #commit(definition: AnyGameDefinition, record: GameRecord, { bumpVersion = true } = {}): Promise<void> {
     if (bumpVersion) record.version += 1;
     record.updatedAt = this.#now().toISOString();
     await this.#store.put(record);
+    this.#schedule(definition, record);
     this.#events.emit(`change:${record.id}`, record.version);
   }
 
@@ -208,13 +282,14 @@ export class GameManager {
       outcome: record.outcome,
       you: viewer,
     };
-    if (record.status === 'lobby') return { ...base, status: 'lobby', activePlayers: [] };
+    if (record.status === 'lobby') return { ...base, status: 'lobby', activePlayers: [], deadline: null };
 
     const { state } = record;
     return {
       ...base,
       status: record.status,
       activePlayers: record.status === 'active' ? definition.activePlayers(state) : [],
+      deadline: record.status === 'active' && definition.deadline ? definition.deadline(state) : null,
       state: definition.view ? definition.view(state, viewer) : state,
     };
   }

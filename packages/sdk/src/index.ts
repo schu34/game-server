@@ -31,6 +31,14 @@ export type SetupContext<TConfig> = {
   config: TConfig;
   /** Per-game random seed. Store whatever RNG state you need inside your game state. */
   seed: string;
+  /** Server time (epoch ms) when the game started. Games never read clocks themselves. */
+  now: number;
+};
+
+/** Context the server passes to state transitions. */
+export type TransitionContext = {
+  /** Server time (epoch ms). Store it in state if you need it later (e.g. a round start time). */
+  now: number;
 };
 
 /**
@@ -71,7 +79,21 @@ export interface GameDefinition<TState extends Json = Json, TMove = Json, TConfi
    * Simultaneous moves: record the player's commitment in state (e.g. `pending[player]`)
    * and, when the last commitment arrives, resolve the round in the same call.
    */
-  applyMove(state: TState, move: TMove, player: PlayerId): Result<TState>;
+  applyMove(state: TState, move: TMove, player: PlayerId, ctx: TransitionContext): Result<TState>;
+
+  /**
+   * Timing primitive: when (epoch ms) this game next wants `onDeadline` called, or null.
+   * Derived from state, so the server can always reschedule timers (e.g. after a restore).
+   * Re-evaluated after every change; if the state moves the deadline, the old one is dropped.
+   */
+  deadline?(state: TState): number | null;
+
+  /**
+   * Called by the server once `deadline(state)` has passed (required if `deadline` is defined).
+   * Decide what time running out means for your game: skip a turn, auto-resolve a round,
+   * forfeit a player... Must return a state whose deadline has moved on (or is null).
+   */
+  onDeadline?(state: TState, ctx: TransitionContext): TState;
 
   /**
    * Who may act right now. Return several players for simultaneous phases,
@@ -112,6 +134,8 @@ type GameViewBase = {
   version: number;
   players: PublicPlayer[];
   activePlayers: PlayerId[];
+  /** When the game's current deadline expires (epoch ms), if it has one. For countdowns. */
+  deadline: number | null;
   outcome: Outcome | null;
   /** The player this view was rendered for, or null for spectators. */
   you: PlayerId | null;
