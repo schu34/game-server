@@ -14,65 +14,79 @@ export type JsonObject = { [key: string]: Json };
 
 export type PlayerId = string;
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
-export const ok = <T>(value: T): Result<T> => ({ ok: true, value });
+export type Result<TValue> = { ok: true; value: TValue } | { ok: false; error: string };
+export const ok = <TValue>(value: TValue): Result<TValue> => ({ ok: true, value });
 export const err = (error: string): { ok: false; error: string } => ({ ok: false, error });
 
 export type Outcome = { winners: PlayerId[] } | { draw: true };
 
-export type SetupContext<C> = {
+export type SetupContext<TConfig> = {
   /** Players in join order. */
   players: PlayerId[];
   /** Config as returned by `parseConfig` (or the raw config if not defined). */
-  config: C;
+  config: TConfig;
   /** Per-game random seed. Store whatever RNG state you need inside your game state. */
   seed: string;
 };
 
-export interface GameDefinition<S extends Json = Json, C extends Json = Json> {
+/**
+ * @typeParam TState  The game's JSON-serializable state.
+ * @typeParam TMove   A validated move, as produced by `parseMove`. Needn't be JSON:
+ *                    the server stores the raw input, not this value.
+ * @typeParam TConfig The game's validated config, as produced by `parseConfig`.
+ */
+export interface GameDefinition<TState extends Json = Json, TMove = Json, TConfig extends Json = Json> {
   /** Unique identifier, e.g. "tic-tac-toe". */
   type: string;
   minPlayers: number;
   maxPlayers: number;
 
   /** Validate untrusted config from the create-game request. Defaults to accepting it as-is. */
-  parseConfig?(input: unknown): Result<C>;
+  parseConfig?(input: unknown): Result<TConfig>;
 
   /** Build the initial state once the game starts. */
-  setup(ctx: SetupContext<C>): S;
+  setup(ctx: SetupContext<TConfig>): TState;
 
   /**
-   * The ONLY state transition. Validate the untrusted `move` and return the next state.
-   * Must be pure (return a new value; do not rely on side effects).
+   * Validate an untrusted move from a client and turn it into a typed `TMove`.
+   * Check both its shape and whether it's legal in this state (e.g. the cell is empty).
+   * An error becomes a 400 response, and `applyMove` is not called.
    *
    * The server only calls this when `player` is in `activePlayers(state)`.
+   */
+  parseMove(input: unknown, state: TState, player: PlayerId): Result<TMove>;
+
+  /**
+   * The ONLY state transition: apply a move that `parseMove` accepted and return the next state.
+   * Must be pure (return a new value; do not rely on side effects). It may still return an
+   * error for rules that are easier to check while applying.
    *
    * Simultaneous moves: record the player's commitment in state (e.g. `pending[player]`)
    * and, when the last commitment arrives, resolve the round in the same call.
    */
-  applyMove(state: S, move: unknown, player: PlayerId): Result<S>;
+  applyMove(state: TState, move: TMove, player: PlayerId): Result<TState>;
 
   /**
    * Who may act right now. Return several players for simultaneous phases,
    * and [] when nobody can act. Note: this list is public.
    */
-  activePlayers(state: S): PlayerId[];
+  activePlayers(state: TState): PlayerId[];
 
   /** Read-only "is the game over?" query. Return null while the game continues. */
-  outcome(state: S): Outcome | null;
+  outcome(state: TState): Outcome | null;
 
   /**
    * Redact state for a viewer (`null` = spectator / public stream).
    * Every state the server sends out goes through this.
    * Defaults to the full state — ANY GAME WITH HIDDEN INFORMATION MUST IMPLEMENT THIS.
    */
-  view?(state: S, viewer: PlayerId | null): Json;
+  view?(state: TState, viewer: PlayerId | null): Json;
 }
 
 /** Identity helper that gives you type inference when defining a game. */
-export function defineGame<S extends Json, C extends Json = Json>(
-  definition: GameDefinition<S, C>,
-): GameDefinition<S, C> {
+export function defineGame<TState extends Json, TMove = Json, TConfig extends Json = Json>(
+  definition: GameDefinition<TState, TMove, TConfig>,
+): GameDefinition<TState, TMove, TConfig> {
   return definition;
 }
 
