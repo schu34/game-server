@@ -13,7 +13,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "check:boundaries": "node scripts/check-boundaries.ts",
-    "test": "npm run check:boundaries && node --test 'packages/*/test/**/*.test.ts'"
+    "test": "npm run check:boundaries && node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts'"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
