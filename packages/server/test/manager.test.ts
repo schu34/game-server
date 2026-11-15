@@ -34,6 +34,7 @@ describe('GameLocks', () => {
   function locks() {
     const committed: Rec[] = [];
     const gameLocks = new GameLocks<Rec, Rec, undefined>({
+      ids: async () => [],
       load: async (id) => ({ id, n: 0 }),
       commit: async (record) => {
         committed.push(record);
@@ -85,6 +86,7 @@ describe('GameLocks', () => {
   it('a read waits for an earlier write and sees its result', async () => {
     let stored: Rec = { id: 'g1', n: 0 };
     const gameLocks = new GameLocks<Rec, Rec, undefined>({
+      ids: async () => [],
       load: async () => ({ ...stored }),
       commit: async (record) => {
         await new Promise((resolve) => setTimeout(resolve, 10)); // a slow store

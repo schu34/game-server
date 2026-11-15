@@ -48,8 +48,8 @@ you couldn't.
 - **Every write to a game goes through `#withLock`.** Load, validate, compute and commit inside the
   same locked callback, using the `tx` it is given: `tx.load()` then `tx.commit(next)`. `tx` is the
   only way to commit, and it refuses once the lock is released or for another game's record (see
-  `core/locks.ts`). Don't call `#store.put` directly; `create()` is the one exception, for a
-  brand-new id. `get()` takes the read lock, so it waits for writes in progress and
+  `core/locks.ts`). The manager keeps no reference to the store: every read and write, including
+  `create()`, goes through a lock. `get()` takes the read lock, so it waits for writes in progress and
   runs alongside other reads. Never call `get()` from inside a write on the same game: it would wait
   for itself.
 - **Every outgoing state goes through the game's `view`.** That covers responses, SSE and anything

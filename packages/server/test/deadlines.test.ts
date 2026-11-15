@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it, type TestContext } from 'node:test';
 import { defineGame, noConfig, ok } from '@gs/sdk';
 import { GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
-import { counterGame, type CounterState } from './fixtures/games.ts';
+import { counterGame, secretPickGame, type CounterState } from './fixtures/games.ts';
 
 const T0 = 1_000_000;
 
@@ -103,6 +103,21 @@ describe('deadlines (timing primitives)', () => {
 
     const restored = new GameManager({ registry, store: MemoryStore.fromSnapshot(store.snapshot()) });
     await restored.restoreTimers();
+    await advance(1000);
+    assert.deepEqual(await turnOf(restored, id), ['p2']);
+    restored.close();
+  });
+
+  it('restoreTimers skips games whose type is no longer registered', async (t) => {
+    const advance = useFakeTime(t);
+    const store = new MemoryStore();
+    const original = new GameManager({ registry: new GameRegistry().register(counterGame).register(secretPickGame), store });
+    await original.create('secret-pick'); // its type is dropped before the restart
+    const { id } = await timedGame(original);
+    original.close();
+
+    const restored = new GameManager({ registry: new GameRegistry().register(counterGame), store });
+    await restored.restoreTimers(); // must not throw on the stale game
     await advance(1000);
     assert.deepEqual(await turnOf(restored, id), ['p2']);
     restored.close();

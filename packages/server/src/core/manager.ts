@@ -37,7 +37,6 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
  */
 export class GameManager {
   readonly #registry: GameRegistry;
-  readonly #store: GameStore;
   readonly #now: () => Date;
   readonly #events = new EventEmitter();
   readonly #locks: GameLocks<Loaded, GameRecord, CommitOptions>;
@@ -46,21 +45,27 @@ export class GameManager {
 
   constructor({ registry, store = new MemoryStore(), now = () => new Date(), onError = console.error }: GameManagerOptions) {
     this.#registry = registry;
-    this.#store = store;
     this.#now = now;
     this.#onError = onError;
     this.#events.setMaxListeners(0);
+    // The store is only captured by these closures, never kept on the manager, so every read and
+    // write of a game goes through its lock: `#locks.read` to look, `#withLock` to change it.
     this.#locks = new GameLocks<Loaded, GameRecord, CommitOptions>({
-      load: (gameId) => this.#load(gameId),
-      // The only code that writes an existing game. It lives here, not in a method, so nothing
-      // in this class can reach it except through a transaction (see #withLock).
+      ids: async () => (await store.list()).map((record) => record.id),
+      load: async (gameId) => {
+        const record = await store.get(gameId);
+        if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
+        const definition = this.#registry.get(record.type);
+        if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
+        return { record, definition };
+      },
       commit: async (record, { bumpVersion = true } = {}) => {
-        // The record came from tx.load() in the same transaction, so its type is registered.
+        // A record comes from tx.load() in the same transaction, or from create(), so its type is registered.
         const definition = this.#registry.get(record.type);
         if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
         if (bumpVersion) record.version += 1;
         record.updatedAt = this.#now().toISOString();
-        await this.#store.put(record);
+        await store.put(record);
         this.#schedule(definition, record);
         this.#events.emit(`change:${record.id}`, record.version);
       },
@@ -72,9 +77,18 @@ export class GameManager {
    * using a store that already holds games (e.g. restored from a snapshot).
    */
   async restoreTimers(): Promise<void> {
-    for (const record of await this.#store.list()) {
-      const definition = this.#registry.get(record.type);
-      if (definition) this.#schedule(definition, record);
+    for (const gameId of await this.#locks.ids()) {
+      try {
+        await this.#locks.read(gameId, async (reader) => {
+          const { record, definition } = await reader.load();
+          this.#schedule(definition, record);
+        });
+      } catch (error) {
+        // Skip a game deleted since it was listed, or whose type is no longer registered: one stale
+        // record in a snapshot must not stop the server from starting.
+        const skippable = error instanceof GameError && (error.code === ErrorCode.NOT_FOUND || error.code === ErrorCode.INTERNAL);
+        if (!skippable) throw error;
+      }
     }
   }
 
@@ -118,10 +132,8 @@ export class GameManager {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    // The one write outside a transaction: the id is fresh and nobody has seen it yet, so no
-    // other operation can be racing on this game. A lobby has no deadline to schedule and no
-    // subscribers to notify, so a bare put is all a commit would do anyway.
-    await this.#store.put(record);
+    // A new game is committed like any other. There's nothing to load: the id is brand new.
+    await this.#withLock(record.id, (tx) => tx.commit(record, { bumpVersion: false }));
     return this.#toView(definition, record, null);
   }
 
@@ -276,14 +288,6 @@ export class GameManager {
     assertJson(state, `$state(${record.type}.setup)`);
     const outcome = definition.outcome(state);
     return { ...record, status: outcome ? 'finished' : 'active', state, outcome };
-  }
-
-  async #load(gameId: string): Promise<Loaded> {
-    const record = await this.#store.get(gameId);
-    if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
-    const definition = this.#registry.get(record.type);
-    if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
-    return { record, definition };
   }
 
   #authenticate(record: GameRecord, key: string | undefined): PlayerRecord {

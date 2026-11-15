@@ -11,8 +11,10 @@ export type GameReader<TLoaded> = {
   load(): Promise<TLoaded>;
 };
 
-/** How a transaction reads and writes a game. Supplied once by the owner of the store. */
+/** How the locks reach the store. Supplied once by its owner, who then holds no other reference. */
 export type GameLockOps<TLoaded, TRecord extends { id: string }, TCommitOptions> = {
+  /** Every stored game's id. */
+  ids(): Promise<string[]>;
   load(gameId: string): Promise<TLoaded>;
   commit(record: TRecord, options?: TCommitOptions): Promise<void>;
 };
@@ -40,6 +42,11 @@ export class GameLocks<TLoaded, TRecord extends { id: string }, TCommitOptions> 
 
   constructor(ops: GameLockOps<TLoaded, TRecord, TCommitOptions>) {
     this.#ops = ops;
+  }
+
+  /** Every stored game's id. Not locked: take a lock on each game before reading it. */
+  ids(): Promise<string[]> {
+    return this.#ops.ids();
   }
 
   /** Run `fn` with exclusive access to the game, and the only handle that can commit it. */
