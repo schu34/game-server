@@ -2,18 +2,15 @@
   "name": "games-server",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "games/*",
-    "apps/*"
-  ],
-  "engines": {
-    "node": ">=24"
-  },
+  "workspaces": ["packages/*", "games/*", "apps/*"],
+  "engines": { "node": ">=24" },
   "scripts": {
+    "dev": "node --watch apps/dev-server/src/main.ts",
+    "start": "node apps/dev-server/src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "check:boundaries": "node scripts/check-boundaries.ts",
-    "test": "npm run check:boundaries && node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts'"
+    "test": "npm run check:boundaries && node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts' 'apps/*/test/**/*.test.ts'",
+    "demo": "node games/tic-tac-toe/cli/play.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
