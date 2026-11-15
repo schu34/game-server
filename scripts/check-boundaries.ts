@@ -3,7 +3,8 @@
  * (npm hoists every workspace into node_modules, so an accidental import of, say,
  * a game from the server would otherwise resolve and silently couple them.)
  *
- *   sdk          → nothing (relative only)
+ *   sdk/src      → nothing (relative only)
+ *   sdk/test     → node:*
  *   server       → @gs/sdk, node:*
  *   server/http  → @gs/sdk, node:*, hono, @hono/* (the only place a web framework is allowed)
  *   client       → @gs/sdk
@@ -35,7 +36,8 @@ const pkg = (name: string) => (s: string) => s === name || s.startsWith(`${name}
 const either = (...checks: ((s: string) => boolean)[]) => (s: string) => checks.some((check) => check(s));
 
 const rules: Rule[] = [
-  { dir: 'packages/sdk', packageRoot: 'packages/sdk', allow: () => false, label: 'no imports' },
+  { dir: 'packages/sdk/src', packageRoot: 'packages/sdk', allow: () => false, label: 'no imports' },
+  { dir: 'packages/sdk/test', packageRoot: 'packages/sdk', allow: nodeBuiltin, label: 'node:*' },
   {
     dir: 'packages/server',
     except: 'packages/server/src/http',

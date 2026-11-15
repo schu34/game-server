@@ -78,6 +78,7 @@ export interface GameDefinition<TState extends Json = Json, TMove = Json, TConfi
    *
    * Simultaneous moves: record the player's commitment in state (e.g. `pending[player]`)
    * and, when the last commitment arrives, resolve the round in the same call.
+   * See `defineSimultaneousGame` for a helper that does this for you.
    */
   applyMove(state: TState, move: TMove, player: PlayerId, ctx: TransitionContext): Result<TState>;
 
@@ -172,3 +173,5 @@ export const ErrorCode = {
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 export type ErrorResponse = { error: { code: ErrorCode; message: string } };
+
+export * from './simultaneous.ts';
