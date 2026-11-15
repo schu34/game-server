@@ -18,12 +18,16 @@ export type Result<TValue> = { ok: true; value: TValue } | { ok: false; error: s
 export const ok = <TValue>(value: TValue): Result<TValue> => ({ ok: true, value });
 export const err = (error: string): { ok: false; error: string } => ({ ok: false, error });
 
+/** `parseConfig` for games that take no config: accepts a missing or null config, rejects anything else. */
+export const noConfig = (input: unknown): Result<null> =>
+  input === undefined || input === null ? ok(null) : err('This game takes no config');
+
 export type Outcome = { winners: PlayerId[] } | { draw: true };
 
 export type SetupContext<TConfig> = {
   /** Players in join order. */
   players: PlayerId[];
-  /** Config as returned by `parseConfig` (or the raw config if not defined). */
+  /** Config as returned by `parseConfig`. */
   config: TConfig;
   /** Per-game random seed. Store whatever RNG state you need inside your game state. */
   seed: string;
@@ -41,8 +45,11 @@ export interface GameDefinition<TState extends Json = Json, TMove = Json, TConfi
   minPlayers: number;
   maxPlayers: number;
 
-  /** Validate untrusted config from the create-game request. Defaults to accepting it as-is. */
-  parseConfig?(input: unknown): Result<TConfig>;
+  /**
+   * Validate untrusted config from the create-game request (`undefined` when none was sent).
+   * Games without config can use `noConfig`.
+   */
+  parseConfig(input: unknown): Result<TConfig>;
 
   /** Build the initial state once the game starts. */
   setup(ctx: SetupContext<TConfig>): TState;
