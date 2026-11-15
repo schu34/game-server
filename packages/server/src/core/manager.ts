@@ -4,6 +4,7 @@ import { ErrorCode, type GameView, type Json, type JoinResponse, type PlayerId }
 import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
+import { GameLocks, type GameTransaction } from './locks.ts';
 import type { GameRecord, LobbyRecord, MoveRecord, PlayerRecord, StartedRecord } from './record.ts';
 import type { AnyGameDefinition, GameRegistry } from './registry.ts';
 import { MemoryStore, type GameStore } from './store.ts';
@@ -22,6 +23,10 @@ export type MoveOptions = {
   expectedVersion?: number;
 };
 
+type Loaded = { record: GameRecord; definition: AnyGameDefinition };
+type CommitOptions = { bumpVersion?: boolean };
+type Transaction = GameTransaction<Loaded, GameRecord, CommitOptions>;
+
 const MAX_NAME_LENGTH = 40;
 /** setTimeout's ceiling (~24.8 days). Longer deadlines are re-checked when this fires. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -35,7 +40,7 @@ export class GameManager {
   readonly #store: GameStore;
   readonly #now: () => Date;
   readonly #events = new EventEmitter();
-  readonly #locks = new Map<string, Promise<unknown>>();
+  readonly #locks: GameLocks<Loaded, GameRecord, CommitOptions>;
   readonly #timers = new Map<string, NodeJS.Timeout>();
   readonly #onError: (error: unknown) => void;
 
@@ -45,6 +50,10 @@ export class GameManager {
     this.#now = now;
     this.#onError = onError;
     this.#events.setMaxListeners(0);
+    this.#locks = new GameLocks({
+      load: (gameId) => this.#load(gameId),
+      commit: (record, options) => this.#commit(record, options),
+    });
   }
 
   /**
@@ -98,6 +107,9 @@ export class GameManager {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    // The one write outside a transaction: the id is fresh and nobody has seen it yet, so no
+    // other operation can be racing on this game. A lobby has no deadline to schedule and no
+    // subscribers to notify, so a bare put is all #commit would do anyway.
     await this.#store.put(record);
     return this.#toView(definition, record, null);
   }
@@ -107,8 +119,8 @@ export class GameManager {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME_LENGTH) {
       throw new GameError(ErrorCode.INVALID_REQUEST, `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`);
     }
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
       if (record.players.length >= definition.maxPlayers) throw new GameError(ErrorCode.CONFLICT, 'Game is full');
 
@@ -117,29 +129,29 @@ export class GameManager {
       record.players.push(player);
       const next = record.players.length === definition.maxPlayers ? this.#start(definition, record) : record;
 
-      await this.#commit(definition, next);
+      await tx.commit(next);
       return { playerId: player.id, key, game: this.#toView(definition, next, player.id) };
     });
   }
 
   /** Start a game early (once minPlayers have joined). Any joined player may start it. */
   async start(gameId: string, key: string | undefined): Promise<GameView> {
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       const player = this.#authenticate(record, key);
       if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
       if (record.players.length < definition.minPlayers) {
         throw new GameError(ErrorCode.CONFLICT, `Need at least ${definition.minPlayers} players to start`);
       }
       const started = this.#start(definition, record);
-      await this.#commit(definition, started);
+      await tx.commit(started);
       return this.#toView(definition, started, player.id);
     });
   }
 
   async move(gameId: string, key: string | undefined, move: unknown, options: MoveOptions = {}): Promise<GameView> {
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       const player = this.#authenticate(record, key);
       if (record.status === 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has not started');
       if (record.status === 'finished') throw new GameError(ErrorCode.CONFLICT, 'Game is finished');
@@ -166,13 +178,14 @@ export class GameManager {
       const result = definition.applyMove(state, parsed.value, player.id, { now: this.#now().getTime() });
       if (!result.ok) throw new GameError(ErrorCode.INVALID_MOVE, result.error);
 
-      await this.#transition(definition, record, result.value, { kind: 'move', player: player.id, move: moveJson });
+      await this.#transition(tx, definition, record, result.value, { kind: 'move', player: player.id, move: moveJson });
       return this.#toView(definition, record, player.id);
     });
   }
 
   /** Apply a new game state: validate, log, update outcome, persist, notify. */
   async #transition(
+    tx: Transaction,
     definition: AnyGameDefinition,
     record: StartedRecord,
     next: unknown,
@@ -184,7 +197,7 @@ export class GameManager {
     record.moves.push({ ...entry, version: record.version, at: this.#now().toISOString() });
     record.outcome = definition.outcome(next);
     if (record.outcome) record.status = 'finished';
-    await this.#commit(definition, record, { bumpVersion: false });
+    await tx.commit(record, { bumpVersion: false });
   }
 
   /** (Re)arm the timer for a game's current deadline, if it has one. */
@@ -205,8 +218,8 @@ export class GameManager {
   }
 
   async #fireDeadline(gameId: string): Promise<void> {
-    await this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    await this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       if (record.status !== 'active' || !definition.deadline || !definition.onDeadline) return;
 
       // State may have changed since the timer was armed; only act if the deadline really has passed.
@@ -222,7 +235,7 @@ export class GameManager {
       if (nextAt !== null && nextAt <= at) {
         throw new Error(`${record.type}.onDeadline did not move the deadline forward (game ${gameId}); state left unchanged`);
       }
-      await this.#transition(definition, record, next, { kind: 'deadline', player: null, move: null });
+      await this.#transition(tx, definition, record, next, { kind: 'deadline', player: null, move: null });
     });
   }
 
@@ -251,7 +264,7 @@ export class GameManager {
     return { ...record, status: outcome ? 'finished' : 'active', state, outcome };
   }
 
-  async #load(gameId: string): Promise<{ record: GameRecord; definition: AnyGameDefinition }> {
+  async #load(gameId: string): Promise<Loaded> {
     const record = await this.#store.get(gameId);
     if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
     const definition = this.#registry.get(record.type);
@@ -265,7 +278,11 @@ export class GameManager {
     return player;
   }
 
-  async #commit(definition: AnyGameDefinition, record: GameRecord, { bumpVersion = true } = {}): Promise<void> {
+  /** Persist, re-arm the deadline timer and notify. Only reachable through a transaction (see #withLock). */
+  async #commit(record: GameRecord, { bumpVersion = true }: CommitOptions = {}): Promise<void> {
+    // The record came from #load inside the same transaction, so its type is registered.
+    const definition = this.#registry.get(record.type);
+    if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
     if (bumpVersion) record.version += 1;
     record.updatedAt = this.#now().toISOString();
     await this.#store.put(record);
@@ -294,16 +311,11 @@ export class GameManager {
     };
   }
 
-  /** Run operations on the same game one at a time (needed once the store is truly async). */
-  async #withLock<T>(gameId: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.#locks.get(gameId) ?? Promise.resolve();
-    const run = previous.then(fn);
-    const tail = run.catch(() => {});
-    this.#locks.set(gameId, tail);
-    try {
-      return await run;
-    } finally {
-      if (this.#locks.get(gameId) === tail) this.#locks.delete(gameId);
-    }
+  /**
+   * Run operations on the same game one at a time (needed once the store is truly async).
+   * `fn` gets the only handle that can commit a record of this game; it stops working once `fn` settles.
+   */
+  #withLock<T>(gameId: string, fn: (tx: Transaction) => Promise<T>): Promise<T> {
+    return this.#locks.run(gameId, fn);
   }
 }

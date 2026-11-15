@@ -46,8 +46,10 @@ you couldn't.
 - **`core/` is transport-agnostic.** `GameManager` must not know about HTTP, Hono or SSE. Transport
   code goes in `http/`, which turns `GameError`s into responses in one place (`app.onError`).
 - **Every write to a game goes through `#withLock`.** Load, validate, compute and commit inside the
-  same locked callback. `get()` may stay lock-free because it only reads. (Issue #13 tracks making
-  this impossible to get wrong.)
+  same locked callback, using the `tx` it is given: `tx.load()` then `tx.commit(next)`. `tx` is the
+  only way to commit, and it refuses once the lock is released or for another game's record (see
+  `core/locks.ts`). Don't call `#commit` or `#store.put` directly; `create()` is the one exception,
+  for a brand-new id. `get()` may stay lock-free because it only reads.
 - **Every outgoing state goes through the game's `view`.** That covers responses, SSE and anything
   new you add. Never send the raw record: key hashes, the seed and the move log stay server-side.
   The tests assert this; keep them passing and extend them for new endpoints.
