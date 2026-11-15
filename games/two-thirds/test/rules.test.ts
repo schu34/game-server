@@ -14,7 +14,8 @@ function start(players: string[], config: unknown = {}, now = 0): TwoThirdsState
 
 function round(state: TwoThirdsState, guesses: Record<string, number>, now = 0): TwoThirdsState {
   for (const [player, guess] of Object.entries(guesses)) {
-    state = unwrap(twoThirds.applyMove(state, { guess }, player, { now }));
+    const decision = unwrap(twoThirds.parseMove({ guess }, state, player)); // parse then apply, as the server does
+    state = unwrap(twoThirds.applyMove(state, decision, player, { now }));
   }
   return state;
 }
@@ -47,7 +48,7 @@ describe('two-thirds rules', () => {
   it('validates guesses', () => {
     const state = start(['a', 'b']);
     for (const bad of [{ guess: -1 }, { guess: 101 }, { guess: 2.5 }, { guess: '5' }, {}, null]) {
-      assert.equal(twoThirds.applyMove(state, bad, 'a', { now: 0 }).ok, false, JSON.stringify(bad));
+      assert.equal(twoThirds.parseMove(bad, state, 'a').ok, false, JSON.stringify(bad));
     }
   });
 

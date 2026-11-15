@@ -79,7 +79,7 @@ export const twoThirds = defineSimultaneousGame<TwoThirdsGame, number, Config>({
     history: [],
   }),
 
-  parseDecision(_game, input) {
+  parseDecision(input) {
     const guess = (input as { guess?: unknown } | null)?.guess;
     return Number.isInteger(guess) && (guess as number) >= 0 && (guess as number) <= 100
       ? ok(guess as number)
