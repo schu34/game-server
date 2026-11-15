@@ -105,20 +105,26 @@ export type GameStatus = 'lobby' | 'active' | 'finished';
 
 export type PublicPlayer = { id: PlayerId; name: string };
 
-/** What any client sees of a game. `state` has already been passed through `view`. */
-export type GameView = {
+type GameViewBase = {
   id: string;
   type: string;
-  status: GameStatus;
   /** Increments on every change (join, start, move). */
   version: number;
   players: PublicPlayer[];
   activePlayers: PlayerId[];
   outcome: Outcome | null;
-  state: Json | null;
   /** The player this view was rendered for, or null for spectators. */
   you: PlayerId | null;
 };
+
+/** A game still waiting for players. It has no state yet: `setup` runs when the game starts. */
+export type LobbyGameView = GameViewBase & { status: 'lobby' };
+
+/** A game that has started. `state` has already been passed through the game's `view`. */
+export type StartedGameView = GameViewBase & { status: 'active' | 'finished'; state: Json };
+
+/** What any client sees of a game. Check `status` to narrow it: only started games have `state`. */
+export type GameView = LobbyGameView | StartedGameView;
 
 export type JoinResponse = { playerId: PlayerId; key: string; game: GameView };
 
