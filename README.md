@@ -39,6 +39,22 @@ A game is pure functions over JSON state (`GameDefinition<TState, TMove, TConfig
 
 Register the game in `apps/dev-server/src/app.ts`.
 
+### Everyone decides at once: `defineSimultaneousGame`
+
+For games with no turn order, where every player decides and then all decisions are processed together
+(`packages/sdk/src/simultaneous.ts`). You write:
+
+- `parseDecision(state, input, player)` → validate one decision when it's submitted
+- `resolve(state, decisions, { round, missing, timedOut, now })` → process the whole round
+
+The helper handles the rest: it collects decisions in any order, hides pending decisions from other players and
+spectators, tracks who it's waiting on, and resolves when the last decision arrives. Options: `allowRevision`
+(change your decision until the round resolves; off by default), `deciders` (e.g. leave out eliminated players),
+and `timeLimitMs` (see below). Clients see `{ round, decided, waitingOn, yourDecision, roundDeadline, game }`.
+
+The engine has no special support for this; the helper produces an ordinary `GameDefinition`. You can still
+write a simultaneous game by hand (see `secretPickGame` in the server test fixtures).
+
 ### Timing primitives
 
 Games never read clocks. The server passes `now` into `setup` and `applyMove`, and games store timestamps in state.
@@ -50,6 +66,8 @@ To act when time runs out, a game implements both:
 The server arms a timer from `deadline(state)` after every change, so a move that pushes the deadline back cancels
 the old one. Because the deadline comes from state, the server can rebuild every timer after a restart:
 call `manager.restoreTimers()` at startup. Clients see the current deadline as `GameView.deadline` for countdowns.
+With `defineSimultaneousGame`, set `timeLimitMs(state)` instead: when it expires the round resolves with
+whatever was submitted, and `resolve`'s `missing` lists who didn't decide, so each game sets its own policy.
 
 ## HTTP API
 
