@@ -1,0 +1,14 @@
+{
+  "name": "@gs/dev-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gs/server": "*",
+    "@gs/game-tic-tac-toe": "*"
+  },
+  "devDependencies": {
+    "@gs/client": "*",
+    "@gs/sdk": "*"
+  }
+}
