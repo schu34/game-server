@@ -34,7 +34,7 @@ A game is pure functions over JSON state (`GameDefinition<TState, TMove, TConfig
 - `activePlayers(state)` → who may act now (several players = a simultaneous phase)
 - `outcome(state)` → `null` | `{ winners }` | `{ draw: true }`
 - `view?(state, viewer)` → redacted state. **Required for any game with hidden information.**
-- `parseConfig?(input)` → validated config
+- `parseConfig(input)` → validated config (`undefined` if none was sent); use `noConfig` if the game takes none
 
 Simultaneous moves: keep commitments in state (e.g. `pending[player]`), list uncommitted players in
 `activePlayers`, resolve inside `applyMove` when the last one arrives, and hide `pending` in `view`.
