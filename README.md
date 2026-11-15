@@ -1,7 +1,9 @@
 # games-server
 
 A generic, multi-game, turn-based game server for Node.js (TypeScript, run natively by Node ≥ 24 — no build step).
-Tic-tac-toe ships as a proof-of-concept game plugin.
+It supports games with a turn order and games where everyone decides at once. Two proof-of-concept games
+ship with it: tic-tac-toe (turns) and two-thirds of the average (2–20 players decide simultaneously, with an
+optional round timer).
 
 ```
 npm install
