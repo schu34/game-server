@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { ErrorCode, ErrorResponse } from '@gs/sdk';
+import { ErrorCode, type ErrorResponse } from '@gs/sdk';
 import { GameError } from '../core/errors.ts';
 import { GameManager } from '../core/manager.ts';
 import type { GameRegistry } from '../core/registry.ts';
@@ -17,13 +17,13 @@ export type GameServerOptions = {
 };
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
-  INVALID_REQUEST: 400,
-  INVALID_MOVE: 400,
-  UNAUTHORIZED: 401,
-  NOT_YOUR_TURN: 403,
-  NOT_FOUND: 404,
-  CONFLICT: 409,
-  INTERNAL: 500,
+  [ErrorCode.INVALID_REQUEST]: 400,
+  [ErrorCode.INVALID_MOVE]: 400,
+  [ErrorCode.UNAUTHORIZED]: 401,
+  [ErrorCode.NOT_YOUR_TURN]: 403,
+  [ErrorCode.NOT_FOUND]: 404,
+  [ErrorCode.CONFLICT]: 409,
+  [ErrorCode.INTERNAL]: 500,
 };
 
 type Context = {
@@ -57,7 +57,7 @@ export function createRequestHandler(
       pattern: /^\/games$/,
       handler: async ({ req, res }) => {
         const body = asObject(await readJson(req, maxBodyBytes));
-        if (typeof body.type !== 'string') throw new GameError('INVALID_REQUEST', '"type" is required');
+        if (typeof body.type !== 'string') throw new GameError(ErrorCode.INVALID_REQUEST, '"type" is required');
         sendJson(res, 201, await manager.create(body.type, body.config));
       },
     },
@@ -92,10 +92,10 @@ export function createRequestHandler(
       pattern: /^\/games\/([^/]+)\/moves$/,
       handler: async ({ req, res, params }) => {
         const body = asObject(await readJson(req, maxBodyBytes));
-        if (!('move' in body)) throw new GameError('INVALID_REQUEST', '"move" is required');
+        if (!('move' in body)) throw new GameError(ErrorCode.INVALID_REQUEST, '"move" is required');
         const { expectedVersion } = body;
         if (expectedVersion !== undefined && !Number.isInteger(expectedVersion)) {
-          throw new GameError('INVALID_REQUEST', '"expectedVersion" must be an integer');
+          throw new GameError(ErrorCode.INVALID_REQUEST, '"expectedVersion" must be an integer');
         }
         const moveOptions = expectedVersion === undefined ? {} : { expectedVersion: expectedVersion as number };
         sendJson(res, 200, await manager.move(params[0]!, bearer(req), body.move, moveOptions));
@@ -132,8 +132,8 @@ export function createRequestHandler(
       route.handler({ req, res, url, params }).catch((error: unknown) => sendError(res, error, onError));
       return;
     }
-    if (pathMatched) sendJson(res, 405, errorBody('INVALID_REQUEST', 'Method not allowed'));
-    else sendJson(res, 404, errorBody('NOT_FOUND', 'Route not found'));
+    if (pathMatched) sendJson(res, 405, errorBody(ErrorCode.INVALID_REQUEST, 'Method not allowed'));
+    else sendJson(res, 404, errorBody(ErrorCode.NOT_FOUND, 'Route not found'));
   };
 }
 
@@ -192,7 +192,7 @@ async function readJson(req: IncomingMessage, limit: number): Promise<unknown> {
   let size = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
     size += chunk.length;
-    if (size > limit) throw new GameError('INVALID_REQUEST', `Request body exceeds ${limit} bytes`);
+    if (size > limit) throw new GameError(ErrorCode.INVALID_REQUEST, `Request body exceeds ${limit} bytes`);
     chunks.push(chunk);
   }
   const text = Buffer.concat(chunks).toString('utf8');
@@ -200,13 +200,13 @@ async function readJson(req: IncomingMessage, limit: number): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
-    throw new GameError('INVALID_REQUEST', 'Request body must be valid JSON');
+    throw new GameError(ErrorCode.INVALID_REQUEST, 'Request body must be valid JSON');
   }
 }
 
 function asObject(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new GameError('INVALID_REQUEST', 'Request body must be a JSON object');
+    throw new GameError(ErrorCode.INVALID_REQUEST, 'Request body must be a JSON object');
   }
   return value as Record<string, unknown>;
 }
@@ -216,13 +216,13 @@ function errorBody(code: ErrorCode, message: string): ErrorResponse {
 }
 
 function sendError(res: ServerResponse, error: unknown, onError: (error: unknown) => void): void {
-  if (error instanceof GameError && error.code !== 'INTERNAL') {
+  if (error instanceof GameError && error.code !== ErrorCode.INTERNAL) {
     sendJson(res, STATUS_BY_CODE[error.code], errorBody(error.code, error.message));
     return;
   }
   onError(error);
   if (res.headersSent) res.end();
-  else sendJson(res, 500, errorBody('INTERNAL', 'Internal server error'));
+  else sendJson(res, 500, errorBody(ErrorCode.INTERNAL, 'Internal server error'));
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

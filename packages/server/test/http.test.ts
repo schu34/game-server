@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
-import type { GameView } from '@gs/sdk';
+import { ErrorCode, type GameView } from '@gs/sdk';
 import { createGameServer, GameRegistry } from '../src/index.ts';
 import { counterGame, secretPickGame, type SecretPickState } from './fixtures/games.ts';
 
@@ -84,7 +84,7 @@ describe('HTTP API', () => {
     assert.equal((await call('POST', `/games/${id}/moves`, { body: { move: { add: 1 } }, key: ben.key })).status, 403);
     const invalid = await call('POST', `/games/${id}/moves`, { body: { move: { add: 9 } }, key: ann.key });
     assert.equal(invalid.status, 400);
-    assert.equal(invalid.body.error.code, 'INVALID_MOVE');
+    assert.equal(invalid.body.error.code, ErrorCode.INVALID_MOVE);
 
     const stale = await call('POST', `/games/${id}/moves`, { body: { move: { add: 1 }, expectedVersion: 0 }, key: ann.key });
     assert.equal(stale.status, 409);
