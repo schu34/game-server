@@ -5,6 +5,7 @@
  *
  *   sdk          → nothing (relative only)
  *   server       → @gs/sdk, node:*
+ *   server/http  → @gs/sdk, node:*, hono, @hono/* (the only place a web framework is allowed)
  *   client       → @gs/sdk
  *   games/X/src  → @gs/sdk
  *   games/X/test → @gs/sdk, node:*
@@ -18,15 +19,36 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 
-type Rule = { dir: string; packageRoot: string; allow: (specifier: string) => boolean; label: string };
+type Rule = {
+  dir: string;
+  /** A subdirectory this rule skips, because a more specific rule covers it. */
+  except?: string;
+  packageRoot: string;
+  allow: (specifier: string) => boolean;
+  label: string;
+};
 
 const nodeBuiltin = (s: string) => s.startsWith('node:');
 const only = (...names: string[]) => (s: string) => names.includes(s);
+/** A package or any of its subpaths, e.g. `hono` and `hono/cors`. */
+const pkg = (name: string) => (s: string) => s === name || s.startsWith(`${name}/`);
 const either = (...checks: ((s: string) => boolean)[]) => (s: string) => checks.some((check) => check(s));
 
 const rules: Rule[] = [
   { dir: 'packages/sdk', packageRoot: 'packages/sdk', allow: () => false, label: 'no imports' },
-  { dir: 'packages/server', packageRoot: 'packages/server', allow: either(only('@gs/sdk'), nodeBuiltin), label: '@gs/sdk, node:*' },
+  {
+    dir: 'packages/server',
+    except: 'packages/server/src/http',
+    packageRoot: 'packages/server',
+    allow: either(only('@gs/sdk'), nodeBuiltin),
+    label: '@gs/sdk, node:*',
+  },
+  {
+    dir: 'packages/server/src/http',
+    packageRoot: 'packages/server',
+    allow: either(only('@gs/sdk'), nodeBuiltin, pkg('hono'), (s) => s.startsWith('@hono/')),
+    label: '@gs/sdk, node:*, hono, @hono/*',
+  },
   { dir: 'packages/client', packageRoot: 'packages/client', allow: only('@gs/sdk'), label: '@gs/sdk' },
 ];
 
@@ -45,7 +67,7 @@ const violations: string[] = [];
 let filesChecked = 0;
 
 for (const rule of rules) {
-  for (const file of listTsFiles(join(root, rule.dir))) {
+  for (const file of listTsFiles(join(root, rule.dir), rule.except && join(root, rule.except))) {
     filesChecked++;
     const source = readFileSync(file, 'utf8');
     for (const match of source.matchAll(IMPORT_RE)) {
@@ -77,7 +99,8 @@ function listDirs(dir: string): string[] {
   }
 }
 
-function listTsFiles(dir: string): string[] {
+function listTsFiles(dir: string, except?: string): string[] {
+  if (dir === except) return [];
   let entries: string[];
   try {
     entries = readdirSync(dir);
@@ -87,7 +110,7 @@ function listTsFiles(dir: string): string[] {
   return entries.flatMap((name) => {
     if (name === 'node_modules') return [];
     const full = join(dir, name);
-    if (statSync(full).isDirectory()) return listTsFiles(full);
+    if (statSync(full).isDirectory()) return listTsFiles(full, except);
     return /\.(m|c)?ts$/.test(name) ? [full] : [];
   });
 }
