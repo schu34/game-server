@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import type { GameView, Json, JoinResponse, PlayerId } from '@gs/sdk';
+import { ErrorCode, type GameView, type Json, type JoinResponse, type PlayerId } from '@gs/sdk';
 import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
@@ -53,10 +53,10 @@ export class GameManager {
 
   async create(type: string, config?: unknown): Promise<GameView> {
     const definition = this.#registry.get(type);
-    if (!definition) throw new GameError('INVALID_REQUEST', `Unknown game type "${type}"`);
+    if (!definition) throw new GameError(ErrorCode.INVALID_REQUEST, `Unknown game type "${type}"`);
 
     const parsed = definition.parseConfig(config);
-    if (!parsed.ok) throw new GameError('INVALID_REQUEST', `Invalid config: ${parsed.error}`);
+    if (!parsed.ok) throw new GameError(ErrorCode.INVALID_REQUEST, `Invalid config: ${parsed.error}`);
     const parsedConfig = parsed.value;
     assertJson(parsedConfig, `$config(${type}.parseConfig)`);
 
@@ -81,12 +81,12 @@ export class GameManager {
   /** Join a game in its lobby. Returns the player's key — the only time it is ever revealed. */
   async join(gameId: string, name: unknown): Promise<JoinResponse> {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME_LENGTH) {
-      throw new GameError('INVALID_REQUEST', `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`);
+      throw new GameError(ErrorCode.INVALID_REQUEST, `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`);
     }
     return this.#withLock(gameId, async () => {
       const { record, definition } = await this.#load(gameId);
-      if (record.status !== 'lobby') throw new GameError('CONFLICT', 'Game has already started');
-      if (record.players.length >= definition.maxPlayers) throw new GameError('CONFLICT', 'Game is full');
+      if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
+      if (record.players.length >= definition.maxPlayers) throw new GameError(ErrorCode.CONFLICT, 'Game is full');
 
       const { key, keyHash } = issueKey();
       const player: PlayerRecord = { id: `p${record.players.length + 1}`, name: name.trim(), keyHash };
@@ -103,9 +103,9 @@ export class GameManager {
     return this.#withLock(gameId, async () => {
       const { record, definition } = await this.#load(gameId);
       const player = this.#authenticate(record, key);
-      if (record.status !== 'lobby') throw new GameError('CONFLICT', 'Game has already started');
+      if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
       if (record.players.length < definition.minPlayers) {
-        throw new GameError('CONFLICT', `Need at least ${definition.minPlayers} players to start`);
+        throw new GameError(ErrorCode.CONFLICT, `Need at least ${definition.minPlayers} players to start`);
       }
       const started = this.#start(definition, record);
       await this.#commit(started);
@@ -117,15 +117,15 @@ export class GameManager {
     return this.#withLock(gameId, async () => {
       const { record, definition } = await this.#load(gameId);
       const player = this.#authenticate(record, key);
-      if (record.status === 'lobby') throw new GameError('CONFLICT', 'Game has not started');
-      if (record.status === 'finished') throw new GameError('CONFLICT', 'Game is finished');
+      if (record.status === 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has not started');
+      if (record.status === 'finished') throw new GameError(ErrorCode.CONFLICT, 'Game is finished');
       if (options.expectedVersion !== undefined && options.expectedVersion !== record.version) {
-        throw new GameError('CONFLICT', `Expected version ${options.expectedVersion} but game is at ${record.version}`);
+        throw new GameError(ErrorCode.CONFLICT, `Expected version ${options.expectedVersion} but game is at ${record.version}`);
       }
 
       const { state } = record; // narrowed to a started record by the status checks above
       if (!definition.activePlayers(state).includes(player.id)) {
-        throw new GameError('NOT_YOUR_TURN', 'It is not your turn');
+        throw new GameError(ErrorCode.NOT_YOUR_TURN, 'It is not your turn');
       }
 
       let moveJson: Json;
@@ -133,14 +133,14 @@ export class GameManager {
         assertJson(move, '$move');
         moveJson = move;
       } catch (error) {
-        throw new GameError('INVALID_MOVE', (error as Error).message);
+        throw new GameError(ErrorCode.INVALID_MOVE, (error as Error).message);
       }
 
       const parsed = definition.parseMove(moveJson, state, player.id);
-      if (!parsed.ok) throw new GameError('INVALID_MOVE', parsed.error);
+      if (!parsed.ok) throw new GameError(ErrorCode.INVALID_MOVE, parsed.error);
 
       const result = definition.applyMove(state, parsed.value, player.id);
-      if (!result.ok) throw new GameError('INVALID_MOVE', result.error);
+      if (!result.ok) throw new GameError(ErrorCode.INVALID_MOVE, result.error);
       assertJson(result.value, `$state(${record.type}.applyMove)`);
 
       record.state = result.value;
@@ -180,15 +180,15 @@ export class GameManager {
 
   async #load(gameId: string): Promise<{ record: GameRecord; definition: AnyGameDefinition }> {
     const record = await this.#store.get(gameId);
-    if (!record) throw new GameError('NOT_FOUND', 'Game not found');
+    if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
     const definition = this.#registry.get(record.type);
-    if (!definition) throw new GameError('INTERNAL', `Game type "${record.type}" is no longer registered`);
+    if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
     return { record, definition };
   }
 
   #authenticate(record: GameRecord, key: string | undefined): PlayerRecord {
     const player = findPlayerByKey(record.players, key);
-    if (!player) throw new GameError('UNAUTHORIZED', 'Missing or invalid player key for this game');
+    if (!player) throw new GameError(ErrorCode.UNAUTHORIZED, 'Missing or invalid player key for this game');
     return player;
   }
 

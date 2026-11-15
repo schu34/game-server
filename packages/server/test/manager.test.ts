@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineGame, err, noConfig, ok, type GameView } from '@gs/sdk';
+import { defineGame, err, ErrorCode, noConfig, ok, type GameView } from '@gs/sdk';
 import { GameError, GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
 import { counterGame, secretPickGame, type CounterState, type SecretPickState } from './fixtures/games.ts';
 
@@ -16,7 +16,7 @@ function stateOf<TState = unknown>(view: GameView): TState {
   return view.state as TState;
 }
 
-async function rejects(promise: Promise<unknown>, code: string) {
+async function rejects(promise: Promise<unknown>, code: ErrorCode) {
   await assert.rejects(promise, (error: unknown) => error instanceof GameError && error.code === code);
 }
 
@@ -45,20 +45,20 @@ describe('GameManager lifecycle (sequential game)', () => {
       { id: 'p2', name: 'Ben' },
       { id: 'p3', name: 'Cat' },
     ]);
-    await rejects(manager.join(game.id, 'Dan'), 'CONFLICT');
+    await rejects(manager.join(game.id, 'Dan'), ErrorCode.CONFLICT);
   });
 
   it('start early once minPlayers have joined; only players can start', async () => {
     const { manager } = setup();
     const game = await manager.create('counter');
     const ann = await manager.join(game.id, 'Ann');
-    await rejects(manager.start(game.id, ann.key), 'CONFLICT'); // not enough players
+    await rejects(manager.start(game.id, ann.key), ErrorCode.CONFLICT); // not enough players
     await manager.join(game.id, 'Ben');
-    await rejects(manager.start(game.id, 'not-a-key'), 'UNAUTHORIZED');
-    await rejects(manager.start(game.id, undefined), 'UNAUTHORIZED');
+    await rejects(manager.start(game.id, 'not-a-key'), ErrorCode.UNAUTHORIZED);
+    await rejects(manager.start(game.id, undefined), ErrorCode.UNAUTHORIZED);
     const started = await manager.start(game.id, ann.key);
     assert.equal(started.status, 'active');
-    await rejects(manager.start(game.id, ann.key), 'CONFLICT');
+    await rejects(manager.start(game.id, ann.key), ErrorCode.CONFLICT);
   });
 
   it('enforces auth, turn order, move validity and finish', async () => {
@@ -66,23 +66,23 @@ describe('GameManager lifecycle (sequential game)', () => {
     const game = await manager.create('counter', { target: 4 });
     const ann = await manager.join(game.id, 'Ann');
     const ben = await manager.join(game.id, 'Ben');
-    await rejects(manager.move(game.id, ann.key, { add: 1 }), 'CONFLICT'); // still in lobby
+    await rejects(manager.move(game.id, ann.key, { add: 1 }), ErrorCode.CONFLICT); // still in lobby
     await manager.start(game.id, ann.key);
 
     // a key from a different game is useless here
     const other = await manager.create('counter');
     const intruder = await manager.join(other.id, 'Eve');
-    await rejects(manager.move(game.id, intruder.key, { add: 1 }), 'UNAUTHORIZED');
+    await rejects(manager.move(game.id, intruder.key, { add: 1 }), ErrorCode.UNAUTHORIZED);
 
-    await rejects(manager.move(game.id, ben.key, { add: 1 }), 'NOT_YOUR_TURN');
-    await rejects(manager.move(game.id, ann.key, { add: 7 }), 'INVALID_MOVE');
+    await rejects(manager.move(game.id, ben.key, { add: 1 }), ErrorCode.NOT_YOUR_TURN);
+    await rejects(manager.move(game.id, ann.key, { add: 7 }), ErrorCode.INVALID_MOVE);
 
     await manager.move(game.id, ann.key, { add: 3 });
     const end = await manager.move(game.id, ben.key, { add: 1 });
     assert.equal(end.status, 'finished');
     assert.deepEqual(end.outcome, { winners: ['p2'] });
     assert.deepEqual(end.activePlayers, []);
-    await rejects(manager.move(game.id, ann.key, { add: 1 }), 'CONFLICT');
+    await rejects(manager.move(game.id, ann.key, { add: 1 }), ErrorCode.CONFLICT);
   });
 
   it('expectedVersion gives optimistic concurrency', async () => {
@@ -91,20 +91,20 @@ describe('GameManager lifecycle (sequential game)', () => {
     const ann = await manager.join(game.id, 'Ann');
     await manager.join(game.id, 'Ben');
     const started = await manager.start(game.id, ann.key);
-    await rejects(manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version - 1 }), 'CONFLICT');
+    await rejects(manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version - 1 }), ErrorCode.CONFLICT);
     const moved = await manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version });
     assert.equal(moved.version, started.version + 1);
   });
 
   it('validates config and player names', async () => {
     const { manager } = setup();
-    await rejects(manager.create('nope'), 'INVALID_REQUEST');
-    await rejects(manager.create('counter', { target: -1 }), 'INVALID_REQUEST');
+    await rejects(manager.create('nope'), ErrorCode.INVALID_REQUEST);
+    await rejects(manager.create('counter', { target: -1 }), ErrorCode.INVALID_REQUEST);
     const game = await manager.create('counter');
-    await rejects(manager.join(game.id, ''), 'INVALID_REQUEST');
-    await rejects(manager.join(game.id, 42), 'INVALID_REQUEST');
-    await rejects(manager.join(game.id, 'x'.repeat(41)), 'INVALID_REQUEST');
-    await rejects(manager.get('missing'), 'NOT_FOUND');
+    await rejects(manager.join(game.id, ''), ErrorCode.INVALID_REQUEST);
+    await rejects(manager.join(game.id, 42), ErrorCode.INVALID_REQUEST);
+    await rejects(manager.join(game.id, 'x'.repeat(41)), ErrorCode.INVALID_REQUEST);
+    await rejects(manager.get('missing'), ErrorCode.NOT_FOUND);
   });
 
   it('get() with a foreign key is rejected, not downgraded to spectator', async () => {
@@ -113,7 +113,7 @@ describe('GameManager lifecycle (sequential game)', () => {
     const ann = await manager.join(game.id, 'Ann');
     assert.equal((await manager.get(game.id, ann.key)).you, 'p1');
     assert.equal((await manager.get(game.id)).you, null);
-    await rejects(manager.get(game.id, 'bogus'), 'UNAUTHORIZED');
+    await rejects(manager.get(game.id, 'bogus'), ErrorCode.UNAUTHORIZED);
   });
 
   it('serializes concurrent operations on the same game', async () => {
@@ -160,11 +160,11 @@ describe('parseMove → applyMove', () => {
       outcome: () => null,
     });
     const manager = new GameManager({ registry: new GameRegistry().register(echo) });
-    await rejects(manager.create('echo', { surprise: true }), 'INVALID_REQUEST'); // noConfig rejects config
+    await rejects(manager.create('echo', { surprise: true }), ErrorCode.INVALID_REQUEST); // noConfig rejects config
     const game = await manager.create('echo');
     const { key } = await manager.join(game.id, 'Solo');
 
-    await rejects(manager.move(game.id, key, { word: 7 }), 'INVALID_MOVE');
+    await rejects(manager.move(game.id, key, { word: 7 }), ErrorCode.INVALID_MOVE);
     assert.equal(calls.apply.length, 0);
 
     const view = await manager.move(game.id, key, { word: 'hi' });
@@ -250,7 +250,7 @@ describe('simultaneous moves (secret-pick)', () => {
     assert.deepEqual(stateOf<SecretPickState>(await manager.get(gameId, ben.key)).pending, { p1: null });
     assert.deepEqual(stateOf<SecretPickState>(await manager.get(gameId)).pending, { p1: null });
 
-    await rejects(manager.move(gameId, ann.key, { pick: 3 }), 'NOT_YOUR_TURN'); // no double-submit
+    await rejects(manager.move(gameId, ann.key, { pick: 3 }), ErrorCode.NOT_YOUR_TURN); // no double-submit
 
     const resolved = await manager.move(gameId, ben.key, { pick: 5 });
     const state = stateOf<SecretPickState>(resolved);
