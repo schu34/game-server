@@ -8,7 +8,9 @@ export type PlayerRecord = {
 };
 
 export type MoveRecord = {
-  player: PlayerId;
+  /** 'move' = a player's move; 'deadline' = the server ran the game's onDeadline. */
+  kind: 'move' | 'deadline';
+  player: PlayerId | null;
   move: Json;
   /** Game version after this move was applied. */
   version: number;

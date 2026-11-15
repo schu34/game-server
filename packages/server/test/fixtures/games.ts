@@ -5,31 +5,43 @@
 import { defineGame, err, ok, type PlayerId } from '@gs/sdk';
 
 // --- Sequential: players take turns adding 1-3; whoever reaches the target wins. ---------
+// With `turnTimeMs`, a player who runs out of time has their turn skipped (timing primitives).
 
-export type CounterState = { players: PlayerId[]; turn: number; count: number; target: number };
+export type CounterState = {
+  players: PlayerId[];
+  turn: number;
+  count: number;
+  target: number;
+  turnTimeMs: number | null;
+  turnStartedAt: number;
+};
 
 export type CounterMove = { add: 1 | 2 | 3 };
 
-export const counterGame = defineGame<CounterState, CounterMove, { target: number }>({
+export const counterGame = defineGame<CounterState, CounterMove, { target: number; turnTimeMs: number | null }>({
   type: 'counter',
   minPlayers: 2,
   maxPlayers: 3,
   parseConfig(input) {
-    if (input === undefined || input === null) return ok({ target: 10 });
-    const target = (input as { target?: unknown }).target;
-    return Number.isInteger(target) && (target as number) > 0 ? ok({ target: target as number }) : err('target must be a positive integer');
+    const { target = 10, turnTimeMs = null } = (input ?? {}) as { target?: unknown; turnTimeMs?: unknown };
+    if (!Number.isInteger(target) || (target as number) <= 0) return err('target must be a positive integer');
+    if (turnTimeMs !== null && (!Number.isInteger(turnTimeMs) || (turnTimeMs as number) <= 0)) return err('turnTimeMs must be a positive integer');
+    return ok({ target: target as number, turnTimeMs: turnTimeMs as number | null });
   },
-  setup: ({ players, config }) => ({ players, turn: 0, count: 0, target: config.target }),
+  setup: ({ players, config, now }) => ({ players, turn: 0, count: 0, ...config, turnStartedAt: now }),
   parseMove(input) {
     const add = (input as { add?: unknown } | null)?.add;
     return add === 1 || add === 2 || add === 3 ? ok({ add }) : err('add must be 1, 2 or 3');
   },
-  applyMove(state, { add }) {
+  applyMove(state, { add }, _player, { now }) {
     const count = state.count + add;
-    return ok({ ...state, count, turn: count >= state.target ? state.turn : (state.turn + 1) % state.players.length });
+    const turn = count >= state.target ? state.turn : (state.turn + 1) % state.players.length;
+    return ok({ ...state, count, turn, turnStartedAt: now });
   },
   activePlayers: (state) => (state.count >= state.target ? [] : [state.players[state.turn]!]),
   outcome: (state) => (state.count >= state.target ? { winners: [state.players[state.turn]!] } : null),
+  deadline: (state) => (state.turnTimeMs === null ? null : state.turnStartedAt + state.turnTimeMs),
+  onDeadline: (state, { now }) => ({ ...state, turn: (state.turn + 1) % state.players.length, turnStartedAt: now }),
 });
 
 // --- Simultaneous: everyone secretly picks 1-10 each round; highest unique pick scores. --

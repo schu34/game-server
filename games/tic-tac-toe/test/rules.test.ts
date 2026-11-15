@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import type { Result } from '@gs/sdk';
 import { ticTacToe, type TicTacToeState } from '../src/index.ts';
 
-const setup = () => ticTacToe.setup({ players: ['p1', 'p2'], config: null, seed: 'x' });
+const setup = () => ticTacToe.setup({ players: ['p1', 'p2'], config: null, seed: 'x', now: 0 });
+const ctx = { now: 0 };
 
 function unwrap<T>(result: Result<T>): T {
   if (!result.ok) throw new Error(result.error);
@@ -12,7 +13,7 @@ function unwrap<T>(result: Result<T>): T {
 
 /** Parse then apply, the way the server does. */
 function move(state: TicTacToeState, input: unknown, player = state.turn): TicTacToeState {
-  return unwrap(ticTacToe.applyMove(state, unwrap(ticTacToe.parseMove(input, state, player)), player));
+  return unwrap(ticTacToe.applyMove(state, unwrap(ticTacToe.parseMove(input, state, player)), player, ctx));
 }
 
 function play(cells: number[]): TicTacToeState {
