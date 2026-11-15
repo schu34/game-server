@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineSimultaneousGame, err, ok, type Result, type SimultaneousState, type SimultaneousView } from '../src/index.ts';
+import { defineSimultaneousGame, err, noConfig, ok, type Result, type SimultaneousState, type SimultaneousView } from '../src/index.ts';
 
 // Each round every (non-eliminated) player picks a number; it's added to their total.
 type SumState = { totals: { [p: string]: number }; eliminated: string[]; rounds: number; log: { missing: string[]; timedOut: boolean }[] };
@@ -10,6 +10,7 @@ function sumGame(options: { allowRevision?: boolean; timeLimitMs?: number } = {}
     type: 'sum',
     minPlayers: 2,
     maxPlayers: 5,
+    parseConfig: noConfig,
     ...(options.allowRevision ? { allowRevision: true } : {}),
     ...(options.timeLimitMs ? { timeLimitMs: () => options.timeLimitMs! } : {}),
     setup: ({ players }) => ({ totals: Object.fromEntries(players.map((p) => [p, 0])), eliminated: [], rounds: 2, log: [] }),

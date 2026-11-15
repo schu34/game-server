@@ -28,7 +28,8 @@ export type SimultaneousGameDefinition<TState extends Json, TDecision extends Js
   type: string;
   minPlayers: number;
   maxPlayers: number;
-  parseConfig?(input: unknown): Result<TConfig>;
+  /** Validate untrusted config, as in `GameDefinition.parseConfig`; use `noConfig` if the game takes none. */
+  parseConfig(input: unknown): Result<TConfig>;
 
   /** Initial game state. */
   setup(ctx: SetupContext<TConfig>): TState;
@@ -108,6 +109,7 @@ export function defineSimultaneousGame<TState extends Json, TDecision extends Js
     type: spec.type,
     minPlayers: spec.minPlayers,
     maxPlayers: spec.maxPlayers,
+    parseConfig: spec.parseConfig,
 
     setup(ctx) {
       return { players: ctx.players, round: 1, roundStartedAt: ctx.now, decisions: {}, game: spec.setup(ctx) };
@@ -144,7 +146,6 @@ export function defineSimultaneousGame<TState extends Json, TDecision extends Js
     },
   };
 
-  if (spec.parseConfig) definition.parseConfig = spec.parseConfig;
   if (spec.timeLimitMs) {
     definition.deadline = roundDeadline;
     definition.onDeadline = (state, ctx) => resolveRound(state, ctx.now, true);
