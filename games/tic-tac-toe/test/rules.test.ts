@@ -10,9 +10,14 @@ function unwrap<T>(result: Result<T>): T {
   return result.value;
 }
 
+/** Parse then apply, the way the server does. */
+function move(state: TicTacToeState, input: unknown, player = state.turn): TicTacToeState {
+  return unwrap(ticTacToe.applyMove(state, unwrap(ticTacToe.parseMove(input, state, player)), player));
+}
+
 function play(cells: number[]): TicTacToeState {
   let state = setup();
-  for (const cell of cells) state = unwrap(ticTacToe.applyMove(state, { cell }, state.turn));
+  for (const cell of cells) state = move(state, { cell });
   return state;
 }
 
@@ -27,7 +32,7 @@ describe('tic-tac-toe rules', () => {
 
   it('alternates turns and does not mutate the previous state', () => {
     const before = setup();
-    const after = unwrap(ticTacToe.applyMove(before, { cell: 4 }, 'p1'));
+    const after = move(before, { cell: 4 }, 'p1');
     assert.equal(before.board[4], null);
     assert.equal(after.board[4], 'X');
     assert.deepEqual(ticTacToe.activePlayers(after), ['p2']);
@@ -36,10 +41,10 @@ describe('tic-tac-toe rules', () => {
   it('rejects malformed moves and taken cells', () => {
     const state = play([4]);
     for (const bad of [null, {}, { cell: -1 }, { cell: 9 }, { cell: 1.5 }, { cell: '3' }, 3]) {
-      assert.equal(ticTacToe.applyMove(state, bad, 'p2').ok, false, `accepted ${JSON.stringify(bad)}`);
+      assert.equal(ticTacToe.parseMove(bad, state, 'p2').ok, false, `accepted ${JSON.stringify(bad)}`);
     }
-    const taken = ticTacToe.applyMove(state, { cell: 4 }, 'p2');
-    assert.equal(taken.ok, false);
+    const taken = ticTacToe.parseMove({ cell: 4 }, state, 'p2');
+    assert.deepEqual(taken, { ok: false, error: 'Cell 4 is already taken' });
   });
 
   it('detects a row win', () => {

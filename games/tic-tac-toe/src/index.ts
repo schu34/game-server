@@ -34,13 +34,7 @@ function outcome(state: TicTacToeState): Outcome | null {
   return state.board.every((cell) => cell !== null) ? { draw: true } : null;
 }
 
-function parseMove(move: unknown): TicTacToeMove | null {
-  if (typeof move !== 'object' || move === null) return null;
-  const { cell } = move as { cell?: unknown };
-  return Number.isInteger(cell) && (cell as number) >= 0 && (cell as number) <= 8 ? { cell: cell as number } : null;
-}
-
-export const ticTacToe = defineGame<TicTacToeState>({
+export const ticTacToe = defineGame<TicTacToeState, TicTacToeMove>({
   type: 'tic-tac-toe',
   minPlayers: 2,
   maxPlayers: 2,
@@ -50,13 +44,16 @@ export const ticTacToe = defineGame<TicTacToeState>({
     return { board: Array<Cell>(9).fill(null), marks: { [x]: 'X', [o]: 'O' }, turn: x };
   },
 
-  applyMove(state, rawMove, player) {
-    const move = parseMove(rawMove);
-    if (!move) return err('Move must be { "cell": 0-8 }');
-    if (state.board[move.cell] !== null) return err(`Cell ${move.cell} is already taken`);
+  parseMove(input, state) {
+    const cell = (input as { cell?: unknown } | null)?.cell;
+    if (!Number.isInteger(cell) || (cell as number) < 0 || (cell as number) > 8) return err('Move must be { "cell": 0-8 }');
+    if (state.board[cell as number] !== null) return err(`Cell ${cell} is already taken`);
+    return ok({ cell: cell as number });
+  },
 
+  applyMove(state, { cell }, player) {
     const board = state.board.slice();
-    board[move.cell] = state.marks[player]!;
+    board[cell] = state.marks[player]!;
     const next = Object.keys(state.marks).find((p) => p !== player)!;
     return ok({ ...state, board, turn: next });
   },
