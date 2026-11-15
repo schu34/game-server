@@ -160,7 +160,9 @@ describe('deadlines (timing primitives)', () => {
     useFakeTime(t);
     const manager = new GameManager({ registry: new GameRegistry().register(counterGame) });
     const { id } = await timedGame(manager);
-    const state = (await manager.get(id)).state as CounterState;
+    const view = await manager.get(id);
+    assert.equal(view.status, 'active');
+    const state = view.state as CounterState;
     assert.equal(state.turnStartedAt, T0);
     manager.close();
   });

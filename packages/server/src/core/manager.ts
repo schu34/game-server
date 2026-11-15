@@ -191,7 +191,7 @@ export class GameManager {
   #schedule(definition: AnyGameDefinition, record: GameRecord): void {
     clearTimeout(this.#timers.get(record.id));
     this.#timers.delete(record.id);
-    if (record.status !== 'active' || record.state === null || !definition.deadline) return;
+    if (record.status !== 'active' || !definition.deadline) return;
     const at = definition.deadline(record.state);
     if (at === null) return;
 
@@ -207,7 +207,7 @@ export class GameManager {
   async #fireDeadline(gameId: string): Promise<void> {
     await this.#withLock(gameId, async () => {
       const { record, definition } = await this.#load(gameId);
-      if (record.status !== 'active' || record.state === null || !definition.deadline || !definition.onDeadline) return;
+      if (record.status !== 'active' || !definition.deadline || !definition.onDeadline) return;
 
       // State may have changed since the timer was armed; only act if the deadline really has passed.
       const at = definition.deadline(record.state);
