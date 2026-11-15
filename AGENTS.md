@@ -82,6 +82,10 @@ you couldn't.
    - Time comes in as `now`; store any timestamps you need in state.
    - Randomness comes from `setup`'s `seed`. Keep the RNG state inside the game state so replays are
      deterministic.
+   - Never mutate the state you were given; return a new one. For nested updates, use Immer's
+     `produce`, as both POC games do. Add it with `pnpm --filter <package> add --save-exact immer@<version>`,
+     pinned like any other dependency. Flat state can keep using spreads. (The SDK can't use Immer,
+     because it must stay dependency-free.)
 4. **Validate in `parseMove` / `parseDecision`,** both shape and legality in the current state (for
    example, that the cell is empty). They return `err(message)` and never throw. `applyMove` then
    receives a typed move.

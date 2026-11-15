@@ -1,3 +1,4 @@
+import { produce } from 'immer';
 import { defineGame, err, noConfig, ok, type Outcome, type PlayerId } from '@gs/sdk';
 
 export type Mark = 'X' | 'O';
@@ -53,10 +54,12 @@ export const ticTacToe = defineGame<TicTacToeState, TicTacToeMove>({
   },
 
   applyMove(state, { cell }, player) {
-    const board = state.board.slice();
-    board[cell] = state.marks[player]!;
-    const next = Object.keys(state.marks).find((p) => p !== player)!;
-    return ok({ ...state, board, turn: next });
+    return ok(
+      produce(state, (draft) => {
+        draft.board[cell] = state.marks[player]!;
+        draft.turn = Object.keys(state.marks).find((p) => p !== player)!;
+      }),
+    );
   },
 
   activePlayers(state) {
