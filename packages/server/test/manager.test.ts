@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineGame, err, ok } from '@gs/sdk';
+import { defineGame, err, noConfig, ok } from '@gs/sdk';
 import { GameError, GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
 import { counterGame, secretPickGame, type CounterState, type SecretPickState } from './fixtures/games.ts';
 
@@ -139,6 +139,7 @@ describe('parseMove → applyMove', () => {
       type: 'echo',
       minPlayers: 1,
       maxPlayers: 1,
+      parseConfig: noConfig,
       setup: () => ({ last: null }),
       parseMove(input, state, player) {
         calls.parse.push([input, state, player]);
@@ -153,6 +154,7 @@ describe('parseMove → applyMove', () => {
       outcome: () => null,
     });
     const manager = new GameManager({ registry: new GameRegistry().register(echo) });
+    await rejects(manager.create('echo', { surprise: true }), 'INVALID_REQUEST'); // noConfig rejects config
     const game = await manager.create('echo');
     const { key } = await manager.join(game.id, 'Solo');
 
@@ -192,6 +194,7 @@ describe('serialization', () => {
       type: 'leaky',
       minPlayers: 1,
       maxPlayers: 1,
+      parseConfig: noConfig,
       setup: () => ({ when: new Date() as never }),
       parseMove: () => ok(null),
       applyMove: (s) => ok(s),

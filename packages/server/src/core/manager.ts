@@ -55,13 +55,10 @@ export class GameManager {
     const definition = this.#registry.get(type);
     if (!definition) throw new GameError('INVALID_REQUEST', `Unknown game type "${type}"`);
 
-    let parsedConfig: Json = (config ?? null) as Json;
-    if (definition.parseConfig) {
-      const result = definition.parseConfig(config);
-      if (!result.ok) throw new GameError('INVALID_REQUEST', `Invalid config: ${result.error}`);
-      parsedConfig = result.value;
-    }
-    assertJson(parsedConfig, '$config');
+    const parsed = definition.parseConfig(config);
+    if (!parsed.ok) throw new GameError('INVALID_REQUEST', `Invalid config: ${parsed.error}`);
+    const parsedConfig = parsed.value;
+    assertJson(parsedConfig, `$config(${type}.parseConfig)`);
 
     const timestamp = this.#now().toISOString();
     const record: GameRecord = {
