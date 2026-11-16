@@ -13,8 +13,8 @@ specific game.
 ## Before you finish any change
 
 ```
-npm run typecheck   # tsc, no emit
-npm test            # boundary check, then every unit, HTTP and e2e test
+pnpm run typecheck   # tsc, no emit
+pnpm test            # every unit, HTTP and e2e test
 ```
 
 Both must pass. Don't skip or weaken a failing test to get there; fix the cause, or say plainly that
@@ -28,13 +28,13 @@ you couldn't.
     `packages/sdk/src/index.ts`).
   - Relative imports include the `.ts` extension. Type-only imports use `import type` (or
     `type` on the specifier), because `verbatimModuleSyntax` is on.
-- **Respect the dependency boundaries** in the README table. `scripts/check-boundaries.ts` enforces
-  them on every `npm test`. If a change seems to need a new edge (say, the server importing a game),
-  the design is wrong. Don't add the edge, and don't loosen the check to make it pass.
+- **Respect the dependency boundaries** in the README table. Each package's `package.json` declares
+  what it may depend on (internal packages as `workspace:*`), and pnpm enforces it: an undeclared
+  import fails to resolve. If a change seems to need a new edge between our packages (say, the server
+  importing a game), the design is wrong. Don't add the dependency just to make the import resolve.
 - **Avoid new runtime dependencies.** The SDK has none and must stay that way. If one is truly
-  needed, keep it as narrow as the Hono rule (only `packages/server/src/http` may import it), pin an
-  exact version that has been published for at least two weeks, and update the boundary check and
-  README together.
+  needed, declare it only in the package that uses it, pin an exact version that has been published
+  for at least two weeks, and update the README table.
 - **State is JSON.** Everything stored must survive `JSON.stringify` and `JSON.parse`. `MemoryStore`
   stores strings on purpose, so a violation fails fast. Don't work around it.
 - **Use the shared types.** Wire types (`GameView`, `ErrorResponse`, `ErrorCode`…) live in
@@ -71,8 +71,8 @@ you couldn't.
 
 1. **Scaffold** `games/<name>/` with `src/index.ts` and `test/rules.test.ts`, plus a `package.json`
    named `@gs/game-<name>` with `"type": "module"`, `"exports": "./src/index.ts"` and one dependency,
-   `"@gs/sdk": "*"`. Copy `games/two-thirds` or `games/tic-tac-toe` as a starting point. Run
-   `npm install` so the workspace link exists.
+   `"@gs/sdk": "workspace:*"`. Copy `games/two-thirds` or `games/tic-tac-toe` as a starting point.
+   Run `pnpm install` so the workspace link exists.
 2. **Pick the shape.**
    - Players take turns → `defineGame` (see `games/tic-tac-toe`).
    - Everyone decides, then the round resolves → `defineSimultaneousGame` (see `games/two-thirds`).
@@ -98,8 +98,8 @@ you couldn't.
    against `Json`.
 9. **Test the rules directly** in `test/rules.test.ts`: call `parseConfig`, `setup`, then
    `parseMove` and `applyMove` in that order, as the server does. Cover wins, draws, illegal moves,
-   turn order and every branch of `view`. Game tests may import only `@gs/sdk` and `node:*`.
-10. **Wire it up** in `apps/dev-server`: add the package to its `package.json`, register it in
+   turn order and every branch of `view`. Game tests need only `@gs/sdk` and `node:*`.
+10. **Wire it up** in `apps/dev-server`: add the package to its `package.json` as `workspace:*`, register it in
     `src/app.ts`, and add an end-to-end test under `apps/dev-server/test/` that plays a game over
     HTTP with `@gs/client`.
 11. **Document it** with a row in the README layout table.

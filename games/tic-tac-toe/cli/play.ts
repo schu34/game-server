@@ -2,8 +2,8 @@
  * Scripted demo: two bots play tic-tac-toe against a running server,
  * while a spectator subscription prints every state pushed over SSE.
  *
- *   npm run dev            # in one terminal
- *   npm run demo [url]     # in another (default http://localhost:3000)
+ *   pnpm run dev           # in one terminal
+ *   pnpm run demo [url]    # in another (default http://localhost:3000)
  */
 import type { GameView } from '@gs/sdk';
 import { GameClient } from '@gs/client';

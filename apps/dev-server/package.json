@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@gs/server": "*",
-    "@gs/game-tic-tac-toe": "*",
-    "@gs/game-two-thirds": "*"
+    "@gs/server": "workspace:*",
+    "@gs/game-tic-tac-toe": "workspace:*",
+    "@gs/game-two-thirds": "workspace:*"
   },
   "devDependencies": {
-    "@gs/client": "*",
-    "@gs/sdk": "*"
+    "@gs/client": "workspace:*",
+    "@gs/sdk": "workspace:*"
   }
 }

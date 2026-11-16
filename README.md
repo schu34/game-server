@@ -6,25 +6,31 @@ ship with it: tic-tac-toe (turns) and two-thirds of the average (2–20 players 
 optional round timer).
 
 ```
-npm install
-npm test          # boundary check + unit + HTTP + e2e tests
-npm run typecheck
-npm run dev       # server on :3000 (PORT to override)
-npm run demo      # two bots play tic-tac-toe against the running server
+pnpm install
+pnpm test           # unit + HTTP + e2e tests
+pnpm run typecheck
+pnpm run dev        # server on :3000 (PORT to override)
+pnpm run demo       # two bots play tic-tac-toe against the running server
 ```
 
 ## Layout & dependency rules
 
-| Package | Purpose | May import |
+| Package | Purpose | Depends on |
 |---|---|---|
 | `packages/sdk` (`@gs/sdk`) | Game contract + wire types | nothing |
-| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `node:*`; `http/` may also use `hono` |
+| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `hono`, `@hono/node-server` |
 | `packages/client` (`@gs/client`) | Generic fetch/SSE client | `@gs/sdk` |
-| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk` (its `cli/` may also use `@gs/client`) |
+| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `games/two-thirds` | POC simultaneous-decision game | `@gs/sdk` |
-| `apps/dev-server` | Wires games into the server | anything |
+| `apps/dev-server` | Wires games into the server | `@gs/server` and the games |
 
-`scripts/check-boundaries.ts` enforces these rules on every `npm test`. The server is tested only against
+The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
+dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server
+importing a game, fails to resolve in both Node and `tsc`. The root dev dependencies (`typescript`,
+`@types/node`) are visible everywhere. The pnpm version is pinned by `packageManager` in the root
+`package.json`.
+
+The server is tested only against
 throwaway fixture games (`packages/server/test/fixtures`), never against a real game.
 
 ## Writing a game
