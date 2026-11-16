@@ -6,6 +6,7 @@
  * closest to 2/3 of the average guess scores a point. Players may change their guess
  * until the round resolves. Most points after the last round wins.
  */
+import { produce } from 'immer';
 import { defineSimultaneousGame, err, ok, type Outcome, type PlayerId, type SimultaneousState } from '@gs/sdk';
 
 export type Config = {
@@ -88,9 +89,10 @@ export const twoThirds = defineSimultaneousGame<TwoThirdsGame, number, Config>({
 
   resolve(game, guesses, { missing }) {
     const result = scoreRound(guesses, missing);
-    const scores = { ...game.scores };
-    for (const winner of result.winners) scores[winner] = (scores[winner] ?? 0) + 1;
-    return { ...game, scores, history: [...game.history, result] };
+    return produce(game, (draft) => {
+      for (const winner of result.winners) draft.scores[winner] = (draft.scores[winner] ?? 0) + 1;
+      draft.history.push(result);
+    });
   },
 
   timeLimitMs: (game) => game.roundTimeMs,

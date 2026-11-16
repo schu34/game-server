@@ -20,8 +20,8 @@ pnpm run demo       # two bots play tic-tac-toe against the running server
 | `packages/sdk` (`@gs/sdk`) | Game contract + wire types | nothing |
 | `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `hono`, `@hono/node-server` |
 | `packages/client` (`@gs/client`) | Generic fetch/SSE client | `@gs/sdk` |
-| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk` (its CLI demo also uses `@gs/client`, as a dev dependency) |
-| `games/two-thirds` | POC simultaneous-decision game | `@gs/sdk` |
+| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
+| `games/two-thirds` | POC simultaneous-decision game | `@gs/sdk`, `immer` |
 | `apps/dev-server` | Wires games into the server | `@gs/server` and the games |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the

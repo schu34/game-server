@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@gs/sdk": "workspace:*"
+    "@gs/sdk": "workspace:*",
+    "immer": "11.2.9"
   }
 }
