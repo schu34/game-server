@@ -184,6 +184,9 @@ importers:
       '@gs/game-two-thirds':
         specifier: workspace:*
         version: link:../../games/two-thirds
+      '@gs/game-undercut':
+        specifier: workspace:*
+        version: link:../../games/undercut
       '@gs/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -216,6 +219,19 @@ importers:
       immer:
         specifier: 11.2.9
         version: 11.2.9
+
+  games/undercut:
+    dependencies:
+      '@gs/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      immer:
+        specifier: 11.2.9
+        version: 11.2.9
+    devDependencies:
+      '@gs/client':
+        specifier: workspace:*
+        version: link:../../packages/client
 
   packages/client:
     dependencies:
