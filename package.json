@@ -10,10 +10,13 @@
     "start": "node apps/dev-server/src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts' 'apps/*/test/**/*.test.ts'",
-    "demo": "node games/tic-tac-toe/cli/play.ts"
+    "demo": "node games/tic-tac-toe/cli/play.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "prettier": "3.9.10",
     "typescript": "^5.9.0"
   },
   "packageManager": "pnpm@12.17.0"

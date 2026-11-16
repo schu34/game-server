@@ -11,6 +11,7 @@ pnpm test           # unit + HTTP + e2e tests
 pnpm run typecheck
 pnpm run dev        # server on :3000 (PORT to override)
 pnpm run demo       # two bots play tic-tac-toe against the running server
+pnpm run format     # Prettier (format:check to only check)
 ```
 
 ## Layout & dependency rules
