@@ -34,6 +34,9 @@ importing a game, fails to resolve in both Node and `tsc`. The root dev dependen
 `@types/node`) are visible everywhere. The pnpm version is pinned by `packageManager` in the root
 `package.json`.
 
+Only edges between our own packages are restricted. npm packages are fine wherever they make the code
+simpler to understand: declare each in the package that uses it, pinned to an exact version.
+
 The server is tested only against
 throwaway fixture games (`packages/server/test/fixtures`), never against a real game.
 
