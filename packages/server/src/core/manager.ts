@@ -4,6 +4,7 @@ import { ErrorCode, type GameView, type Json, type JoinResponse, type PlayerId }
 import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
+import { GameLocks, type GameTransaction } from './locks.ts';
 import type { GameRecord, LobbyRecord, MoveRecord, PlayerRecord, StartedRecord } from './record.ts';
 import type { AnyGameDefinition, GameRegistry } from './registry.ts';
 import { MemoryStore, type GameStore } from './store.ts';
@@ -22,6 +23,10 @@ export type MoveOptions = {
   expectedVersion?: number;
 };
 
+type Loaded = { record: GameRecord; definition: AnyGameDefinition };
+type CommitOptions = { bumpVersion?: boolean };
+type Transaction = GameTransaction<Loaded, GameRecord, CommitOptions>;
+
 const MAX_NAME_LENGTH = 40;
 /** setTimeout's ceiling (~24.8 days). Longer deadlines are re-checked when this fires. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -32,19 +37,39 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
  */
 export class GameManager {
   readonly #registry: GameRegistry;
-  readonly #store: GameStore;
   readonly #now: () => Date;
   readonly #events = new EventEmitter();
-  readonly #locks = new Map<string, Promise<unknown>>();
+  readonly #locks: GameLocks<Loaded, GameRecord, CommitOptions>;
   readonly #timers = new Map<string, NodeJS.Timeout>();
   readonly #onError: (error: unknown) => void;
 
   constructor({ registry, store = new MemoryStore(), now = () => new Date(), onError = console.error }: GameManagerOptions) {
     this.#registry = registry;
-    this.#store = store;
     this.#now = now;
     this.#onError = onError;
     this.#events.setMaxListeners(0);
+    // The store is only captured by these closures, never kept on the manager, so every read and
+    // write of a game goes through its lock: `#locks.read` to look, `#withLock` to change it.
+    this.#locks = new GameLocks<Loaded, GameRecord, CommitOptions>({
+      ids: async () => (await store.list()).map((record) => record.id),
+      load: async (gameId) => {
+        const record = await store.get(gameId);
+        if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
+        const definition = this.#registry.get(record.type);
+        if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
+        return { record, definition };
+      },
+      commit: async (record, { bumpVersion = true } = {}) => {
+        // A record comes from tx.load() in the same transaction, or from create(), so its type is registered.
+        const definition = this.#registry.get(record.type);
+        if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
+        if (bumpVersion) record.version += 1;
+        record.updatedAt = this.#now().toISOString();
+        await store.put(record);
+        this.#schedule(definition, record);
+        this.#events.emit(`change:${record.id}`, record.version);
+      },
+    });
   }
 
   /**
@@ -52,9 +77,18 @@ export class GameManager {
    * using a store that already holds games (e.g. restored from a snapshot).
    */
   async restoreTimers(): Promise<void> {
-    for (const record of await this.#store.list()) {
-      const definition = this.#registry.get(record.type);
-      if (definition) this.#schedule(definition, record);
+    for (const gameId of await this.#locks.ids()) {
+      try {
+        await this.#locks.read(gameId, async (reader) => {
+          const { record, definition } = await reader.load();
+          this.#schedule(definition, record);
+        });
+      } catch (error) {
+        // Skip a game deleted since it was listed, or whose type is no longer registered: one stale
+        // record in a snapshot must not stop the server from starting.
+        const skippable = error instanceof GameError && (error.code === ErrorCode.NOT_FOUND || error.code === ErrorCode.INTERNAL);
+        if (!skippable) throw error;
+      }
     }
   }
 
@@ -98,7 +132,8 @@ export class GameManager {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    await this.#store.put(record);
+    // A new game is committed like any other. There's nothing to load: the id is brand new.
+    await this.#withLock(record.id, (tx) => tx.commit(record, { bumpVersion: false }));
     return this.#toView(definition, record, null);
   }
 
@@ -107,8 +142,8 @@ export class GameManager {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME_LENGTH) {
       throw new GameError(ErrorCode.INVALID_REQUEST, `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`);
     }
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
       if (record.players.length >= definition.maxPlayers) throw new GameError(ErrorCode.CONFLICT, 'Game is full');
 
@@ -117,29 +152,29 @@ export class GameManager {
       record.players.push(player);
       const next = record.players.length === definition.maxPlayers ? this.#start(definition, record) : record;
 
-      await this.#commit(definition, next);
+      await tx.commit(next);
       return { playerId: player.id, key, game: this.#toView(definition, next, player.id) };
     });
   }
 
   /** Start a game early (once minPlayers have joined). Any joined player may start it. */
   async start(gameId: string, key: string | undefined): Promise<GameView> {
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       const player = this.#authenticate(record, key);
       if (record.status !== 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has already started');
       if (record.players.length < definition.minPlayers) {
         throw new GameError(ErrorCode.CONFLICT, `Need at least ${definition.minPlayers} players to start`);
       }
       const started = this.#start(definition, record);
-      await this.#commit(definition, started);
+      await tx.commit(started);
       return this.#toView(definition, started, player.id);
     });
   }
 
   async move(gameId: string, key: string | undefined, move: unknown, options: MoveOptions = {}): Promise<GameView> {
-    return this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    return this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       const player = this.#authenticate(record, key);
       if (record.status === 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has not started');
       if (record.status === 'finished') throw new GameError(ErrorCode.CONFLICT, 'Game is finished');
@@ -166,13 +201,14 @@ export class GameManager {
       const result = definition.applyMove(state, parsed.value, player.id, { now: this.#now().getTime() });
       if (!result.ok) throw new GameError(ErrorCode.INVALID_MOVE, result.error);
 
-      await this.#transition(definition, record, result.value, { kind: 'move', player: player.id, move: moveJson });
+      await this.#transition(tx, definition, record, result.value, { kind: 'move', player: player.id, move: moveJson });
       return this.#toView(definition, record, player.id);
     });
   }
 
   /** Apply a new game state: validate, log, update outcome, persist, notify. */
   async #transition(
+    tx: Transaction,
     definition: AnyGameDefinition,
     record: StartedRecord,
     next: unknown,
@@ -184,7 +220,7 @@ export class GameManager {
     record.moves.push({ ...entry, version: record.version, at: this.#now().toISOString() });
     record.outcome = definition.outcome(next);
     if (record.outcome) record.status = 'finished';
-    await this.#commit(definition, record, { bumpVersion: false });
+    await tx.commit(record, { bumpVersion: false });
   }
 
   /** (Re)arm the timer for a game's current deadline, if it has one. */
@@ -205,8 +241,8 @@ export class GameManager {
   }
 
   async #fireDeadline(gameId: string): Promise<void> {
-    await this.#withLock(gameId, async () => {
-      const { record, definition } = await this.#load(gameId);
+    await this.#withLock(gameId, async (tx) => {
+      const { record, definition } = await tx.load();
       if (record.status !== 'active' || !definition.deadline || !definition.onDeadline) return;
 
       // State may have changed since the timer was armed; only act if the deadline really has passed.
@@ -222,7 +258,7 @@ export class GameManager {
       if (nextAt !== null && nextAt <= at) {
         throw new Error(`${record.type}.onDeadline did not move the deadline forward (game ${gameId}); state left unchanged`);
       }
-      await this.#transition(definition, record, next, { kind: 'deadline', player: null, move: null });
+      await this.#transition(tx, definition, record, next, { kind: 'deadline', player: null, move: null });
     });
   }
 
@@ -231,9 +267,12 @@ export class GameManager {
    * A key that doesn't belong to this game is rejected rather than silently downgraded.
    */
   async get(gameId: string, key?: string): Promise<GameView> {
-    const { record, definition } = await this.#load(gameId);
-    const viewer = key === undefined ? null : this.#authenticate(record, key).id;
-    return this.#toView(definition, record, viewer);
+    // A read lock: waits for any write in progress on this game, so it never sees a half-done one.
+    return this.#locks.read(gameId, async (reader) => {
+      const { record, definition } = await reader.load();
+      const viewer = key === undefined ? null : this.#authenticate(record, key).id;
+      return this.#toView(definition, record, viewer);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -251,26 +290,10 @@ export class GameManager {
     return { ...record, status: outcome ? 'finished' : 'active', state, outcome };
   }
 
-  async #load(gameId: string): Promise<{ record: GameRecord; definition: AnyGameDefinition }> {
-    const record = await this.#store.get(gameId);
-    if (!record) throw new GameError(ErrorCode.NOT_FOUND, 'Game not found');
-    const definition = this.#registry.get(record.type);
-    if (!definition) throw new GameError(ErrorCode.INTERNAL, `Game type "${record.type}" is no longer registered`);
-    return { record, definition };
-  }
-
   #authenticate(record: GameRecord, key: string | undefined): PlayerRecord {
     const player = findPlayerByKey(record.players, key);
     if (!player) throw new GameError(ErrorCode.UNAUTHORIZED, 'Missing or invalid player key for this game');
     return player;
-  }
-
-  async #commit(definition: AnyGameDefinition, record: GameRecord, { bumpVersion = true } = {}): Promise<void> {
-    if (bumpVersion) record.version += 1;
-    record.updatedAt = this.#now().toISOString();
-    await this.#store.put(record);
-    this.#schedule(definition, record);
-    this.#events.emit(`change:${record.id}`, record.version);
   }
 
   #toView(definition: AnyGameDefinition, record: GameRecord, viewer: PlayerId | null): GameView {
@@ -294,16 +317,12 @@ export class GameManager {
     };
   }
 
-  /** Run operations on the same game one at a time (needed once the store is truly async). */
-  async #withLock<T>(gameId: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.#locks.get(gameId) ?? Promise.resolve();
-    const run = previous.then(fn);
-    const tail = run.catch(() => {});
-    this.#locks.set(gameId, tail);
-    try {
-      return await run;
-    } finally {
-      if (this.#locks.get(gameId) === tail) this.#locks.delete(gameId);
-    }
+  /**
+   * Take the game's write lock: `fn` runs alone, after every earlier read and write on the game.
+   * It gets the only handle that can commit a record of this game, which stops working once `fn` settles.
+   * Never call `get()` on the same game from inside `fn`: it would wait for `fn` to finish.
+   */
+  #withLock<T>(gameId: string, fn: (tx: Transaction) => Promise<T>): Promise<T> {
+    return this.#locks.write(gameId, fn);
   }
 }
