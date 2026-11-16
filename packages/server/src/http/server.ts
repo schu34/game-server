@@ -46,7 +46,11 @@ export function createGameServer(options: GameServerOptions): { server: Server; 
 /** The API as a Hono app, for mounting into another Hono app or any fetch-based runtime. */
 export function createGameApp(
   manager: GameManager,
-  { maxBodyBytes = 64 * 1024, heartbeatMs = 15_000, onError = console.error }: Omit<GameServerOptions, 'registry' | 'store'> = {},
+  {
+    maxBodyBytes = 64 * 1024,
+    heartbeatMs = 15_000,
+    onError = console.error,
+  }: Omit<GameServerOptions, 'registry' | 'store'> = {},
 ): Hono {
   const app = new Hono();
 
@@ -104,7 +108,15 @@ export function createGameApp(
   app.get('/games/:id/events', (c) => streamEvents(c, manager, heartbeatMs));
 
   // Known paths with the wrong method get a 405 rather than falling through to a 404.
-  for (const path of ['/game-types', '/games', '/games/:id', '/games/:id/players', '/games/:id/start', '/games/:id/moves', '/games/:id/events']) {
+  for (const path of [
+    '/game-types',
+    '/games',
+    '/games/:id',
+    '/games/:id/players',
+    '/games/:id/start',
+    '/games/:id/moves',
+    '/games/:id/events',
+  ]) {
     app.all(path, (c) => c.json(errorBody(ErrorCode.INVALID_REQUEST, 'Method not allowed'), 405));
   }
   app.notFound((c) => c.json(errorBody(ErrorCode.NOT_FOUND, 'Route not found'), 404));

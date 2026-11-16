@@ -25,7 +25,8 @@ export const counterGame = defineGame<CounterState, CounterMove, { target: numbe
   parseConfig(input) {
     const { target = 10, turnTimeMs = null } = (input ?? {}) as { target?: unknown; turnTimeMs?: unknown };
     if (!Number.isInteger(target) || (target as number) <= 0) return err('target must be a positive integer');
-    if (turnTimeMs !== null && (!Number.isInteger(turnTimeMs) || (turnTimeMs as number) <= 0)) return err('turnTimeMs must be a positive integer');
+    if (turnTimeMs !== null && (!Number.isInteger(turnTimeMs) || (turnTimeMs as number) <= 0))
+      return err('turnTimeMs must be a positive integer');
     return ok({ target: target as number, turnTimeMs: turnTimeMs as number | null });
   },
   setup: ({ players, config, now }) => ({ players, turn: 0, count: 0, ...config, turnStartedAt: now }),
@@ -62,7 +63,9 @@ export const secretPickGame = defineGame<SecretPickState, SecretPickMove, { roun
   maxPlayers: 4,
   parseConfig: (input) => {
     const rounds = (input as { rounds?: unknown } | undefined)?.rounds ?? 2;
-    return Number.isInteger(rounds) && (rounds as number) > 0 ? ok({ rounds: rounds as number }) : err('rounds must be a positive integer');
+    return Number.isInteger(rounds) && (rounds as number) > 0
+      ? ok({ rounds: rounds as number })
+      : err('rounds must be a positive integer');
   },
   setup: ({ players, config }) => ({
     players,

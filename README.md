@@ -16,14 +16,14 @@ pnpm run format     # Prettier (format:check to only check)
 
 ## Layout & dependency rules
 
-| Package | Purpose | Depends on |
-|---|---|---|
-| `packages/sdk` (`@gs/sdk`) | Game contract + wire types | nothing |
-| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `hono`, `@hono/node-server` |
-| `packages/client` (`@gs/client`) | Generic fetch/SSE client | `@gs/sdk` |
-| `games/tic-tac-toe` | POC turn-based game | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
-| `games/two-thirds` | POC simultaneous-decision game | `@gs/sdk`, `immer` |
-| `apps/dev-server` | Wires games into the server | `@gs/server` and the games |
+| Package                          | Purpose                                                                     | Depends on                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `packages/sdk` (`@gs/sdk`)       | Game contract + wire types                                                  | nothing                                                                       |
+| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `hono`, `@hono/node-server`                                        |
+| `packages/client` (`@gs/client`) | Generic fetch/SSE client                                                    | `@gs/sdk`                                                                     |
+| `games/tic-tac-toe`              | POC turn-based game                                                         | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
+| `games/two-thirds`               | POC simultaneous-decision game                                              | `@gs/sdk`, `immer`                                                            |
+| `apps/dev-server`                | Wires games into the server                                                 | `@gs/server` and the games                                                    |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
 dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server
@@ -83,15 +83,15 @@ whatever was submitted, and `resolve`'s `missing` lists who didn't decide, so ea
 
 Player keys are issued once at join time; send them as `Authorization: Bearer <key>`. Only the key's hash is stored.
 
-| Request | Auth | |
-|---|---|---|
-| `GET /game-types` | | registered games |
-| `POST /games` `{type, config?}` | | create (lobby) |
-| `POST /games/:id/players` `{name}` | | join → `{playerId, key, game}`; auto-starts when full |
-| `POST /games/:id/start` | key | start early (≥ minPlayers) |
-| `GET /games/:id[?since=N]` | optional | game view; `{unchanged:true}` if version ≤ N |
-| `POST /games/:id/moves` `{move, expectedVersion?}` | key | submit a move |
-| `GET /games/:id/events` | | SSE stream of spectator views (`id:` = version; honours `Last-Event-ID`) |
+| Request                                            | Auth     |                                                                          |
+| -------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `GET /game-types`                                  |          | registered games                                                         |
+| `POST /games` `{type, config?}`                    |          | create (lobby)                                                           |
+| `POST /games/:id/players` `{name}`                 |          | join → `{playerId, key, game}`; auto-starts when full                    |
+| `POST /games/:id/start`                            | key      | start early (≥ minPlayers)                                               |
+| `GET /games/:id[?since=N]`                         | optional | game view; `{unchanged:true}` if version ≤ N                             |
+| `POST /games/:id/moves` `{move, expectedVersion?}` | key      | submit a move                                                            |
+| `GET /games/:id/events`                            |          | SSE stream of spectator views (`id:` = version; honours `Last-Event-ID`) |
 
 Errors are `{error: {code, message}}`: 400 invalid request/move, 401 bad key, 403 not your turn, 404, 409 wrong
 status/version. Don't use `expectedVersion` in simultaneous-move games: players submitting at the same time would

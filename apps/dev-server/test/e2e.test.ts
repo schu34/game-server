@@ -73,7 +73,10 @@ describe('tic-tac-toe end to end over HTTP + SSE', () => {
     const versions = seen.map((v) => v.version);
     assert.equal(versions[0], 0);
     assert.equal(versions.at(-1), 7);
-    assert.ok(versions.every((v, i) => i === 0 || v > versions[i - 1]!), `out of order: ${versions}`);
+    assert.ok(
+      versions.every((v, i) => i === 0 || v > versions[i - 1]!),
+      `out of order: ${versions}`,
+    );
     assert.ok(seen.every((v) => v.you === null));
   });
 });

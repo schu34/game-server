@@ -25,6 +25,10 @@ export class GameRegistry {
   }
 
   list(): GameTypeInfo[] {
-    return [...this.#definitions.values()].map(({ type, minPlayers, maxPlayers }) => ({ type, minPlayers, maxPlayers }));
+    return [...this.#definitions.values()].map(({ type, minPlayers, maxPlayers }) => ({
+      type,
+      minPlayers,
+      maxPlayers,
+    }));
   }
 }

@@ -8,7 +8,12 @@ await manager.restoreTimers();
 
 server.listen(port, () => {
   console.log(`Game server listening on http://localhost:${port}`);
-  console.log(`Game types: ${manager.registry.list().map((g) => g.type).join(', ')}`);
+  console.log(
+    `Game types: ${manager.registry
+      .list()
+      .map((g) => g.type)
+      .join(', ')}`,
+  );
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

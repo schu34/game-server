@@ -12,10 +12,7 @@ export function hashKey(key: string): string {
 }
 
 /** Find the player in this game that owns `key`, comparing hashes in constant time. */
-export function findPlayerByKey(
-  players: readonly PlayerRecord[],
-  key: string | undefined,
-): PlayerRecord | undefined {
+export function findPlayerByKey(players: readonly PlayerRecord[], key: string | undefined): PlayerRecord | undefined {
   if (!key) return undefined;
   const candidate = Buffer.from(hashKey(key), 'hex');
   let match: PlayerRecord | undefined;

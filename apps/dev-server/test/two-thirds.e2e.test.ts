@@ -101,7 +101,14 @@ describe('two-thirds end to end (simultaneous decisions over HTTP + SSE)', () =>
     }
 
     // Round 2 → game over.
-    for (const [client, guess] of [[p1, 20], [p2, 20], [p3, 90], [p4, 90], [p5, 90]] as const) await client.move(id, { guess });
+    for (const [client, guess] of [
+      [p1, 20],
+      [p2, 20],
+      [p3, 90],
+      [p4, 90],
+      [p5, 90],
+    ] as const)
+      await client.move(id, { guess });
     const final = await spectator.until((g) => g.status === 'finished');
     assert.deepEqual(final.activePlayers, []);
     assert.ok(final.outcome && 'winners' in final.outcome);

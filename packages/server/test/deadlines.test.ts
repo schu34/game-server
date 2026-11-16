@@ -51,7 +51,13 @@ describe('deadlines (timing primitives)', () => {
     assert.deepEqual(changes, [after.version]); // SSE subscribers are notified like any change
 
     const record = (await store.get(id))!;
-    assert.deepEqual(record.moves.at(-1), { kind: 'deadline', player: null, move: null, version: after.version, at: new Date(T0 + 1000).toISOString() });
+    assert.deepEqual(record.moves.at(-1), {
+      kind: 'deadline',
+      player: null,
+      move: null,
+      version: after.version,
+      at: new Date(T0 + 1000).toISOString(),
+    });
 
     await advance(1000);
     assert.deepEqual(await turnOf(manager, id), ['p1']); // and it keeps re-arming
@@ -111,7 +117,10 @@ describe('deadlines (timing primitives)', () => {
   it('restoreTimers skips games whose type is no longer registered', async (t) => {
     const advance = useFakeTime(t);
     const store = new MemoryStore();
-    const original = new GameManager({ registry: new GameRegistry().register(counterGame).register(secretPickGame), store });
+    const original = new GameManager({
+      registry: new GameRegistry().register(counterGame).register(secretPickGame),
+      store,
+    });
     await original.create('secret-pick'); // its type is dropped before the restart
     const { id } = await timedGame(original);
     original.close();

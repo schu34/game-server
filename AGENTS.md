@@ -93,7 +93,7 @@ you couldn't.
 5. **Declare config honestly.** Implement `parseConfig` with sensible defaults when `input` is
    `undefined`, or use `noConfig`.
 6. **Hidden information needs `view`.** If any player shouldn't see part of the state (hands, secret
-   picks, pending decisions), implement `view(state, viewer)` and test it for another player *and*
+   picks, pending decisions), implement `view(state, viewer)` and test it for another player _and_
    for a spectator (`viewer === null`). The default view exposes everything. `activePlayers` is
    public too, so don't leak secrets through it.
 7. **Time limits** use `deadline` and `onDeadline` together (the registry rejects one without the

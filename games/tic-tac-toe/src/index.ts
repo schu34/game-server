@@ -49,7 +49,8 @@ export const ticTacToe = defineGame<TicTacToeState, TicTacToeMove>({
 
   parseMove(input, state) {
     const cell = (input as { cell?: unknown } | null)?.cell;
-    if (!Number.isInteger(cell) || (cell as number) < 0 || (cell as number) > 8) return err('Move must be { "cell": 0-8 }');
+    if (!Number.isInteger(cell) || (cell as number) < 0 || (cell as number) > 8)
+      return err('Move must be { "cell": 0-8 }');
     if (state.board[cell as number] !== null) return err(`Cell ${cell} is already taken`);
     return ok({ cell: cell as number });
   },

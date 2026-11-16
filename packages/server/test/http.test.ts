@@ -24,7 +24,11 @@ async function call(method: string, path: string, { body, key }: { body?: unknow
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(base + path, { method, headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  const res = await fetch(base + path, {
+    method,
+    headers,
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
   return { status: res.status, body: (await res.json()) as any };
 }
 
@@ -44,7 +48,9 @@ async function openStream(path: string) {
           const block = buffer.slice(0, boundary);
           buffer = buffer.slice(boundary + 2);
           if (block.startsWith(':')) continue;
-          const fields = Object.fromEntries(block.split('\n').map((l) => [l.slice(0, l.indexOf(':')), l.slice(l.indexOf(':') + 2)]));
+          const fields = Object.fromEntries(
+            block.split('\n').map((l) => [l.slice(0, l.indexOf(':')), l.slice(l.indexOf(':') + 2)]),
+          );
           return { id: fields.id!, data: JSON.parse(fields.data!) };
         }
         const { value, done } = await reader.read();
@@ -68,7 +74,10 @@ describe('HTTP API', () => {
   it('lists game types', async () => {
     const { status, body } = await call('GET', '/game-types');
     assert.equal(status, 200);
-    assert.deepEqual(body.gameTypes.map((g: { type: string }) => g.type), ['counter', 'secret-pick']);
+    assert.deepEqual(
+      body.gameTypes.map((g: { type: string }) => g.type),
+      ['counter', 'secret-pick'],
+    );
   });
 
   it('plays a full game with correct status codes', async () => {
@@ -86,7 +95,10 @@ describe('HTTP API', () => {
     assert.equal(invalid.status, 400);
     assert.equal(invalid.body.error.code, ErrorCode.INVALID_MOVE);
 
-    const stale = await call('POST', `/games/${id}/moves`, { body: { move: { add: 1 }, expectedVersion: 0 }, key: ann.key });
+    const stale = await call('POST', `/games/${id}/moves`, {
+      body: { move: { add: 1 }, expectedVersion: 0 },
+      key: ann.key,
+    });
     assert.equal(stale.status, 409);
 
     await call('POST', `/games/${id}/moves`, { body: { move: { add: 3 } }, key: ann.key });
@@ -100,7 +112,10 @@ describe('HTTP API', () => {
   it('GET supports ?since= for cheap polling', async () => {
     const { id } = await newCounterGame();
     const current = (await call('GET', `/games/${id}`)).body as GameView;
-    assert.deepEqual((await call('GET', `/games/${id}?since=${current.version}`)).body, { unchanged: true, version: current.version });
+    assert.deepEqual((await call('GET', `/games/${id}?since=${current.version}`)).body, {
+      unchanged: true,
+      version: current.version,
+    });
     assert.equal((await call('GET', `/games/${id}?since=${current.version - 1}`)).body.id, id);
   });
 
