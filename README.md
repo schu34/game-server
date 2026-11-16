@@ -1,9 +1,10 @@
 # games-server
 
 A generic, multi-game, turn-based game server for Node.js (TypeScript, run natively by Node ≥ 24 — no build step).
-It supports games with a turn order and games where everyone decides at once. Two proof-of-concept games
-ship with it: tic-tac-toe (turns) and two-thirds of the average (2–20 players decide simultaneously, with an
-optional round timer).
+It supports games with a turn order and games where everyone decides at once. Three proof-of-concept games
+ship with it: tic-tac-toe (turns), two-thirds of the average (2–20 players decide simultaneously, with an
+optional round timer) and Undercut (3–10 players reveal two cards, then secretly play one; the lowest unique
+card wins).
 
 ```
 pnpm install
@@ -11,19 +12,21 @@ pnpm test           # unit + HTTP + e2e tests
 pnpm run typecheck
 pnpm run dev        # server on :3000 (PORT to override)
 pnpm run demo       # two bots play tic-tac-toe against the running server
+pnpm run demo:undercut  # five bots play Undercut against it
 pnpm run format     # Prettier (format:check to only check)
 ```
 
 ## Layout & dependency rules
 
-| Package                          | Purpose                                                                     | Depends on                                                                    |
-| -------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `packages/sdk` (`@gs/sdk`)       | Game contract + wire types                                                  | nothing                                                                       |
-| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`) | `@gs/sdk`, `hono`, `@hono/node-server`                                        |
-| `packages/client` (`@gs/client`) | Generic fetch/SSE client                                                    | `@gs/sdk`                                                                     |
-| `games/tic-tac-toe`              | POC turn-based game                                                         | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
-| `games/two-thirds`               | POC simultaneous-decision game                                              | `@gs/sdk`, `immer`                                                            |
-| `apps/dev-server`                | Wires games into the server                                                 | `@gs/server` and the games                                                    |
+| Package                          | Purpose                                                                                       | Depends on                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `packages/sdk` (`@gs/sdk`)       | Game contract + wire types                                                                    | nothing                                                                       |
+| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`)                   | `@gs/sdk`, `hono`, `@hono/node-server`                                        |
+| `packages/client` (`@gs/client`) | Generic fetch/SSE client                                                                      | `@gs/sdk`                                                                     |
+| `games/tic-tac-toe`              | POC turn-based game                                                                           | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
+| `games/two-thirds`               | POC simultaneous-decision game                                                                | `@gs/sdk`, `immer`                                                            |
+| `games/undercut`                 | Simultaneous card game: two-step rounds (pick a pair, then play one), cycles and eliminations | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
+| `apps/dev-server`                | Wires games into the server                                                                   | `@gs/server` and the games                                                    |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
 dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server
