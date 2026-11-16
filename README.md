@@ -21,12 +21,12 @@ pnpm run format     # Prettier (format:check to only check)
 | Package                          | Purpose                                                                                       | Depends on                                                                    |
 | -------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `packages/sdk` (`@gs/sdk`)       | Game contract + wire types                                                                    | nothing                                                                       |
-| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`)                   | `@gs/sdk`, `hono`, `@hono/node-server`                                        |
+| `packages/server` (`@gs/server`) | Engine (`core/`) + HTTP/SSE transport on [Hono](https://hono.dev) (`http/`)                   | `@gs/sdk`, `hono`, `@hono/node-server`, `pino`                                |
 | `packages/client` (`@gs/client`) | Generic fetch/SSE client                                                                      | `@gs/sdk`                                                                     |
 | `games/tic-tac-toe`              | POC turn-based game                                                                           | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `games/two-thirds`               | POC simultaneous-decision game                                                                | `@gs/sdk`, `immer`                                                            |
 | `games/undercut`                 | Simultaneous card game: two-step rounds (pick a pair, then play one), cycles and eliminations | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
-| `apps/dev-server`                | Wires games into the server                                                                   | `@gs/server` and the games                                                    |
+| `apps/dev-server`                | Wires games into the server                                                                   | `@gs/server`, the games, `pino`, `pino-pretty`                                |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
 dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server
@@ -108,6 +108,28 @@ get 409s from each other.
 `GameStore` is async so a database store can replace `MemoryStore` later. `MemoryStore` keeps records as
 JSON strings, so a game that returns non-serializable state fails immediately. `snapshot()` and
 `MemoryStore.fromSnapshot()` save and restore all games. The manager runs operations on one game one at a time.
+
+## Logging
+
+The server logs JSON lines with [pino](https://getpino.io), at the level in `LOG_LEVEL` (default `info`;
+tests run with `silent`). Pass your own `logger` in `GameServerOptions` to change where they go.
+`pnpm run dev` pretty-prints them when it runs in a terminal.
+
+| Level   | What                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------ |
+| `error` | 500s and failing deadline handlers, with stacks                                                  |
+| `warn`  | a push to a live stream failing                                                                  |
+| `info`  | games starting and finishing, requests rejected with a 4xx (with the error code), the stats line |
+| `debug` | every request, games created, players joining, moves, deadlines, streams opening and closing     |
+
+Requests carry the route pattern, game id, status, duration and a request id, which is also returned in
+the `x-request-id` header. Keys, the `Authorization` header and move contents are never logged: a move can
+be a secret.
+
+Every 10 s (`statsIntervalMs`) the server logs a `stats` line: requests per second by status class,
+open streams, games started, finished and in progress, moves, event-loop utilization and delay, and memory.
+Event-loop utilization near 1 means the server is saturated. Connections it never accepted don't show up in
+its logs at all, so watch utilization rather than waiting for errors.
 
 ## Not in v1
 

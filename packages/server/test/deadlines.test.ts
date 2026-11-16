@@ -3,6 +3,7 @@ import { describe, it, type TestContext } from 'node:test';
 import { defineGame, noConfig, ok } from '@gs/sdk';
 import { GameManager, GameRegistry, MemoryStore } from '../src/index.ts';
 import { counterGame, secretPickGame, type CounterState } from './fixtures/games.ts';
+import { captureLogger, LEVEL } from './fixtures/logger.ts';
 
 const T0 = 1_000_000;
 
@@ -163,15 +164,18 @@ describe('deadlines (timing primitives)', () => {
       deadline: (s) => s.at,
       onDeadline: (s) => s, // bug: same deadline
     });
-    const errors: unknown[] = [];
-    const manager = new GameManager({ registry: new GameRegistry().register(stuck), onError: (e) => errors.push(e) });
+    const { logger, entries } = captureLogger();
+    const manager = new GameManager({ registry: new GameRegistry().register(stuck), logger });
+    const errors = () => entries.filter((e) => e.level === LEVEL.error);
     const game = await manager.create('stuck');
     const { game: started } = await manager.join(game.id, 'Solo');
 
     await advance(100);
     await advance(100);
-    assert.equal(errors.length, 1);
-    assert.match(String(errors[0]), /did not move the deadline forward/);
+    assert.equal(errors().length, 1);
+    assert.equal(errors()[0]!.msg, 'deadline handler failed');
+    assert.equal(errors()[0]!.gameId, game.id);
+    assert.match((errors()[0]!.err as { message: string }).message, /did not move the deadline forward/);
     assert.equal((await manager.get(game.id)).version, started.version);
   });
 

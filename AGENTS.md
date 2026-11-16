@@ -59,6 +59,9 @@ you couldn't.
   The tests assert this; keep them passing and extend them for new endpoints.
 - **Treat game code as untrusted input to the engine.** Call `parseConfig` and `parseMove` before
   using client input, and `assertJson` whatever a game returns, exactly as the existing paths do.
+- **Log through the injected `logger`** (pino), never `console`. Use structured fields (`gameId`,
+  `player`…) rather than formatting them into the message. Never log keys, the `Authorization` header or
+  move contents. Pick the level from the table in the README.
 - **Errors are `GameError(ErrorCode.X, message)`.** Pick the code by meaning (`CONFLICT` for wrong
   status or version, `NOT_YOUR_TURN`, `INVALID_MOVE`…). Use `INTERNAL` only for bugs, since its
   message is hidden from clients. A new code needs an HTTP status in `STATUS_BY_CODE`.
