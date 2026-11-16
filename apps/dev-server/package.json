@@ -6,7 +6,8 @@
   "dependencies": {
     "@gs/server": "workspace:*",
     "@gs/game-tic-tac-toe": "workspace:*",
-    "@gs/game-two-thirds": "workspace:*"
+    "@gs/game-two-thirds": "workspace:*",
+    "@gs/game-undercut": "workspace:*"
   },
   "devDependencies": {
     "@gs/client": "workspace:*",
