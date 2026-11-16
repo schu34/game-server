@@ -35,9 +35,10 @@ async function call(method: string, path: string, { body, key }: { body?: unknow
 }
 
 /** Minimal SSE reader for tests. */
-async function openStream(path: string) {
+async function openStream(path: string, key?: string) {
   const controller = new AbortController();
-  const res = await fetch(base + path, { signal: controller.signal });
+  const headers: Record<string, string> = key ? { authorization: `Bearer ${key}` } : {};
+  const res = await fetch(base + path, { signal: controller.signal, headers });
   const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   return {
@@ -172,6 +173,35 @@ describe('SSE', () => {
     await res.body?.cancel();
   });
 
+  it("with a key, streams that player's own view", async () => {
+    const created = (await call('POST', '/games', { body: { type: 'secret-pick', config: { rounds: 1 } } })).body;
+    const ann = (await call('POST', `/games/${created.id}/players`, { body: { name: 'Ann' } })).body;
+    const ben = (await call('POST', `/games/${created.id}/players`, { body: { name: 'Ben' } })).body;
+    await call('POST', `/games/${created.id}/start`, { key: ann.key });
+
+    const annStream = await openStream(`/games/${created.id}/events`, ann.key);
+    const benStream = await openStream(`/games/${created.id}/events`, ben.key);
+    assert.equal((await annStream.next()).data.you, 'p1');
+    assert.equal((await benStream.next()).data.you, 'p2');
+
+    await call('POST', `/games/${created.id}/moves`, { body: { move: { pick: 8 } }, key: ann.key });
+    const annView = (await annStream.next()).data;
+    const benView = (await benStream.next()).data;
+    assert.equal(annView.status, 'active');
+    assert.equal(benView.status, 'active');
+    assert.deepEqual((annView.state as SecretPickState).pending, { p1: 8 });
+    assert.deepEqual((benView.state as SecretPickState).pending, { p1: null });
+    annStream.close();
+    benStream.close();
+  });
+
+  it('401s for a bad key, before opening the stream', async () => {
+    const { id } = await newCounterGame();
+    const res = await fetch(`${base}/games/${id}/events`, { headers: { authorization: 'Bearer nope' } });
+    assert.equal(res.status, 401);
+    await res.body?.cancel();
+  });
+
   it('never reveals pending simultaneous picks', async () => {
     const created = (await call('POST', '/games', { body: { type: 'secret-pick', config: { rounds: 1 } } })).body;
     const ann = (await call('POST', `/games/${created.id}/players`, { body: { name: 'Ann' } })).body;
@@ -242,9 +272,9 @@ describe('logging', () => {
   });
 
   it('logs streams opening and closing, with who is watching', async () => {
-    const { id } = await newCounterGame();
+    const { id, ann } = await newCounterGame();
     entries.length = 0;
-    const stream = await openStream(`/games/${id}/events`);
+    const stream = await openStream(`/games/${id}/events`, ann.key);
     await stream.next();
     stream.close();
     for (let i = 0; i < 50 && !entries.some((e) => e.msg === 'stream closed'); i++)
@@ -253,8 +283,8 @@ describe('logging', () => {
     assert.deepEqual(
       streamLogs.map((e) => [e.msg, e.gameId, e.viewer]),
       [
-        ['stream opened', id, 'spectator'],
-        ['stream closed', id, 'spectator'],
+        ['stream opened', id, 'p1'],
+        ['stream closed', id, 'p1'],
       ],
     );
     assert.equal(streamLogs[1]!.sent, 1);
