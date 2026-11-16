@@ -28,6 +28,7 @@ pnpm run format     # Prettier (format:check to only check)
 | `games/two-thirds`               | POC simultaneous-decision game                                                                | `@gs/sdk`, `immer`                                                            |
 | `games/undercut`                 | Simultaneous card game: two-step rounds (pick a pair, then play one), cycles and eliminations | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `apps/dev-server`                | Wires games into the server; load test in `bench/`                                            | `@gs/server`, the games, `pino`, `pino-pretty`                                |
+| `apps/tic-tac-toe-web`           | Experimental React UI for tic-tac-toe (Vite; `pnpm run dev:web`)                              | `@gs/client`, `@gs/sdk`, the game's types, `react`, `react-dom`               |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
 dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server

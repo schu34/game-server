@@ -24,5 +24,6 @@
     "apps/*/src",
     "apps/*/test",
     "apps/*/bench"
-  ]
+  ],
+  "exclude": ["apps/tic-tac-toe-web"]
 }
