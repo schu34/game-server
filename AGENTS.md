@@ -13,11 +13,12 @@ specific game.
 ## Before you finish any change
 
 ```
-pnpm run typecheck   # tsc, no emit
-pnpm test            # every unit, HTTP and e2e test
+pnpm run typecheck      # tsc, no emit
+pnpm test               # every unit, HTTP and e2e test
+pnpm run format:check   # Prettier; `pnpm run format` fixes it
 ```
 
-Both must pass. Don't skip or weaken a failing test to get there; fix the cause, or say plainly that
+All three must pass. Don't skip or weaken a failing test to get there; fix the cause, or say plainly that
 you couldn't.
 
 ## Rules that apply everywhere
@@ -92,7 +93,7 @@ you couldn't.
 5. **Declare config honestly.** Implement `parseConfig` with sensible defaults when `input` is
    `undefined`, or use `noConfig`.
 6. **Hidden information needs `view`.** If any player shouldn't see part of the state (hands, secret
-   picks, pending decisions), implement `view(state, viewer)` and test it for another player *and*
+   picks, pending decisions), implement `view(state, viewer)` and test it for another player _and_
    for a spectator (`viewer === null`). The default view exposes everything. `activePlayers` is
    public too, so don't leak secrets through it.
 7. **Time limits** use `deadline` and `onDeadline` together (the registry rejects one without the

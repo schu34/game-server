@@ -116,7 +116,8 @@ export function defineSimultaneousGame<TState extends Json, TDecision extends Js
     },
 
     parseMove(input, state, player) {
-      if (player in state.decisions && !spec.allowRevision) return { ok: false, error: 'You have already decided this round' };
+      if (player in state.decisions && !spec.allowRevision)
+        return { ok: false, error: 'You have already decided this round' };
       return spec.parseDecision(input, state.game, player);
     },
 

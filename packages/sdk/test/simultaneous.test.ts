@@ -1,9 +1,22 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { defineSimultaneousGame, err, noConfig, ok, type Result, type SimultaneousState, type SimultaneousView } from '../src/index.ts';
+import {
+  defineSimultaneousGame,
+  err,
+  noConfig,
+  ok,
+  type Result,
+  type SimultaneousState,
+  type SimultaneousView,
+} from '../src/index.ts';
 
 // Each round every (non-eliminated) player picks a number; it's added to their total.
-type SumState = { totals: { [p: string]: number }; eliminated: string[]; rounds: number; log: { missing: string[]; timedOut: boolean }[] };
+type SumState = {
+  totals: { [p: string]: number };
+  eliminated: string[];
+  rounds: number;
+  log: { missing: string[]; timedOut: boolean }[];
+};
 
 function sumGame(options: { allowRevision?: boolean; timeLimitMs?: number } = {}) {
   return defineSimultaneousGame<SumState, number>({
@@ -13,7 +26,12 @@ function sumGame(options: { allowRevision?: boolean; timeLimitMs?: number } = {}
     parseConfig: noConfig,
     ...(options.allowRevision ? { allowRevision: true } : {}),
     ...(options.timeLimitMs ? { timeLimitMs: () => options.timeLimitMs! } : {}),
-    setup: ({ players }) => ({ totals: Object.fromEntries(players.map((p) => [p, 0])), eliminated: [], rounds: 2, log: [] }),
+    setup: ({ players }) => ({
+      totals: Object.fromEntries(players.map((p) => [p, 0])),
+      eliminated: [],
+      rounds: 2,
+      log: [],
+    }),
     deciders: (state, players) => players.filter((p) => !state.eliminated.includes(p)),
     parseDecision: (input) => (Number.isInteger(input) ? ok(input as number) : err('pick an integer')),
     resolve(state, decisions, { missing, timedOut }) {

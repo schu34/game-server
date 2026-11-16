@@ -43,7 +43,12 @@ export class GameManager {
   readonly #timers = new Map<string, NodeJS.Timeout>();
   readonly #onError: (error: unknown) => void;
 
-  constructor({ registry, store = new MemoryStore(), now = () => new Date(), onError = console.error }: GameManagerOptions) {
+  constructor({
+    registry,
+    store = new MemoryStore(),
+    now = () => new Date(),
+    onError = console.error,
+  }: GameManagerOptions) {
     this.#registry = registry;
     this.#now = now;
     this.#onError = onError;
@@ -86,7 +91,8 @@ export class GameManager {
       } catch (error) {
         // Skip a game deleted since it was listed, or whose type is no longer registered: one stale
         // record in a snapshot must not stop the server from starting.
-        const skippable = error instanceof GameError && (error.code === ErrorCode.NOT_FOUND || error.code === ErrorCode.INTERNAL);
+        const skippable =
+          error instanceof GameError && (error.code === ErrorCode.NOT_FOUND || error.code === ErrorCode.INTERNAL);
         if (!skippable) throw error;
       }
     }
@@ -140,7 +146,10 @@ export class GameManager {
   /** Join a game in its lobby. Returns the player's key — the only time it is ever revealed. */
   async join(gameId: string, name: unknown): Promise<JoinResponse> {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_NAME_LENGTH) {
-      throw new GameError(ErrorCode.INVALID_REQUEST, `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`);
+      throw new GameError(
+        ErrorCode.INVALID_REQUEST,
+        `Name must be a non-empty string of at most ${MAX_NAME_LENGTH} characters`,
+      );
     }
     return this.#withLock(gameId, async (tx) => {
       const { record, definition } = await tx.load();
@@ -179,7 +188,10 @@ export class GameManager {
       if (record.status === 'lobby') throw new GameError(ErrorCode.CONFLICT, 'Game has not started');
       if (record.status === 'finished') throw new GameError(ErrorCode.CONFLICT, 'Game is finished');
       if (options.expectedVersion !== undefined && options.expectedVersion !== record.version) {
-        throw new GameError(ErrorCode.CONFLICT, `Expected version ${options.expectedVersion} but game is at ${record.version}`);
+        throw new GameError(
+          ErrorCode.CONFLICT,
+          `Expected version ${options.expectedVersion} but game is at ${record.version}`,
+        );
       }
 
       const { state } = record; // narrowed to a started record by the status checks above
@@ -256,7 +268,9 @@ export class GameManager {
       assertJson(next, `$state(${record.type}.onDeadline)`);
       const nextAt = definition.outcome(next) ? null : definition.deadline(next);
       if (nextAt !== null && nextAt <= at) {
-        throw new Error(`${record.type}.onDeadline did not move the deadline forward (game ${gameId}); state left unchanged`);
+        throw new Error(
+          `${record.type}.onDeadline did not move the deadline forward (game ${gameId}); state left unchanged`,
+        );
       }
       await this.#transition(tx, definition, record, next, { kind: 'deadline', player: null, move: null });
     });

@@ -25,7 +25,10 @@ describe('GameRegistry', () => {
   it('rejects duplicate types and bad player counts', () => {
     const registry = new GameRegistry().register(counterGame);
     assert.throws(() => registry.register(counterGame), /already registered/);
-    assert.throws(() => registry.register({ ...counterGame, type: 'bad', minPlayers: 3, maxPlayers: 2 }), /invalid player counts/);
+    assert.throws(
+      () => registry.register({ ...counterGame, type: 'bad', minPlayers: 3, maxPlayers: 2 }),
+      /invalid player counts/,
+    );
   });
 });
 
@@ -135,8 +138,18 @@ describe('GameLocks', () => {
 
   it('a failed read or write still releases the lock', async () => {
     const { gameLocks, committed } = locks();
-    await assert.rejects(gameLocks.read('g1', async () => { throw new Error('read failed'); }), /read failed/);
-    await assert.rejects(gameLocks.write('g1', async () => { throw new Error('write failed'); }), /write failed/);
+    await assert.rejects(
+      gameLocks.read('g1', async () => {
+        throw new Error('read failed');
+      }),
+      /read failed/,
+    );
+    await assert.rejects(
+      gameLocks.write('g1', async () => {
+        throw new Error('write failed');
+      }),
+      /write failed/,
+    );
     await gameLocks.write('g1', async (tx) => tx.commit({ id: 'g1', n: 1 }));
     assert.deepEqual(committed, [{ id: 'g1', n: 1 }]);
   });
@@ -246,7 +259,10 @@ describe('GameManager lifecycle (sequential game)', () => {
     const ann = await manager.join(game.id, 'Ann');
     await manager.join(game.id, 'Ben');
     const started = await manager.start(game.id, ann.key);
-    await rejects(manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version - 1 }), ErrorCode.CONFLICT);
+    await rejects(
+      manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version - 1 }),
+      ErrorCode.CONFLICT,
+    );
     const moved = await manager.move(game.id, ann.key, { add: 1 }, { expectedVersion: started.version });
     assert.equal(moved.version, started.version + 1);
   });
@@ -277,7 +293,10 @@ describe('GameManager lifecycle (sequential game)', () => {
     const results = await Promise.allSettled(['A', 'B', 'C', 'D', 'E'].map((n) => manager.join(game.id, n)));
     assert.equal(results.filter((r) => r.status === 'fulfilled').length, 3);
     const view = await manager.get(game.id);
-    assert.deepEqual(view.players.map((p) => p.id), ['p1', 'p2', 'p3']);
+    assert.deepEqual(
+      view.players.map((p) => p.id),
+      ['p1', 'p2', 'p3'],
+    );
   });
 
   it('emits change events per game', async () => {
