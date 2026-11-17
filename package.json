@@ -7,8 +7,9 @@
   },
   "scripts": {
     "dev": "node --watch apps/dev-server/src/main.ts",
+    "dev:web": "pnpm --filter @gs/tic-tac-toe-web dev",
     "start": "node apps/dev-server/src/main.ts",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p apps/tic-tac-toe-web/tsconfig.json",
     "test": "LOG_LEVEL=silent node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts' 'apps/*/test/**/*.test.ts'",
     "demo": "node games/tic-tac-toe/cli/play.ts",
     "demo:undercut": "node games/undercut/cli/play.ts",
