@@ -33,9 +33,10 @@ you couldn't.
   what it may depend on (internal packages as `workspace:*`), and pnpm enforces it: an undeclared
   import fails to resolve. If a change seems to need a new edge between our packages (say, the server
   importing a game), the design is wrong. Don't add the dependency just to make the import resolve.
-- **Avoid new runtime dependencies.** The SDK has none and must stay that way. If one is truly
-  needed, declare it only in the package that uses it, pin an exact version that has been published
-  for at least two weeks, and update the README table.
+- **npm packages are fine when they make the code simpler to understand.** Only edges between our
+  own packages are restricted (above). Declare a package only in the package that uses it, pin an
+  exact version that has been published for at least two weeks, and update the README table. Prefer a
+  well-known library over writing the same thing by hand.
 - **State is JSON.** Everything stored must survive `JSON.stringify` and `JSON.parse`. `MemoryStore`
   stores strings on purpose, so a violation fails fast. Don't work around it.
 - **Use the shared types.** Wire types (`GameView`, `ErrorResponse`, `ErrorCode`…) live in
@@ -58,6 +59,9 @@ you couldn't.
   The tests assert this; keep them passing and extend them for new endpoints.
 - **Treat game code as untrusted input to the engine.** Call `parseConfig` and `parseMove` before
   using client input, and `assertJson` whatever a game returns, exactly as the existing paths do.
+- **Log through the injected `logger`** (pino), never `console`. Use structured fields (`gameId`,
+  `player`…) rather than formatting them into the message. Never log keys, the `Authorization` header or
+  move contents. Pick the level from the table in the README.
 - **Errors are `GameError(ErrorCode.X, message)`.** Pick the code by meaning (`CONFLICT` for wrong
   status or version, `NOT_YOUR_TURN`, `INVALID_MOVE`…). Use `INTERNAL` only for bugs, since its
   message is hidden from clients. A new code needs an HTTP status in `STATUS_BY_CODE`.
@@ -85,8 +89,7 @@ you couldn't.
      deterministic.
    - Never mutate the state you were given; return a new one. For nested updates, use Immer's
      `produce`, as both POC games do. Add it with `pnpm --filter <package> add --save-exact immer@<version>`,
-     pinned like any other dependency. Flat state can keep using spreads. (The SDK can't use Immer,
-     because it must stay dependency-free.)
+     pinned like any other dependency. Flat state can keep using spreads.
 4. **Validate in `parseMove` / `parseDecision`,** both shape and legality in the current state (for
    example, that the cell is empty). They return `err(message)` and never throw. `applyMove` then
    receives a typed move.

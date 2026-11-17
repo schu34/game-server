@@ -5,6 +5,7 @@ import { findPlayerByKey, issueKey } from './auth.ts';
 import { GameError } from './errors.ts';
 import { assertJson } from './json.ts';
 import { GameLocks, type GameTransaction } from './locks.ts';
+import { defaultLogger, type Logger } from '../log.ts';
 import type { GameRecord, LobbyRecord, MoveRecord, PlayerRecord, StartedRecord } from './record.ts';
 import type { AnyGameDefinition, GameRegistry } from './registry.ts';
 import { MemoryStore, type GameStore } from './store.ts';
@@ -14,9 +15,12 @@ export type GameManagerOptions = {
   store?: GameStore;
   /** Injectable clock for tests. */
   now?: () => Date;
-  /** Receives errors from background work (deadline timers). Default: console.error. */
-  onError?: (error: unknown) => void;
+  /** Where game events and background errors (deadline timers) go. Default: JSON on stdout at LOG_LEVEL. */
+  logger?: Logger;
 };
+
+/** Running totals since the manager was created, for monitoring. */
+export type GameCounters = { created: number; started: number; finished: number; moves: number; deadlines: number };
 
 export type MoveOptions = {
   /** Reject with CONFLICT unless the game is at exactly this version. Don't use for simultaneous-move games. */
@@ -41,17 +45,18 @@ export class GameManager {
   readonly #events = new EventEmitter();
   readonly #locks: GameLocks<Loaded, GameRecord, CommitOptions>;
   readonly #timers = new Map<string, NodeJS.Timeout>();
-  readonly #onError: (error: unknown) => void;
+  readonly #log: Logger;
+  readonly #counters: GameCounters = { created: 0, started: 0, finished: 0, moves: 0, deadlines: 0 };
 
   constructor({
     registry,
     store = new MemoryStore(),
     now = () => new Date(),
-    onError = console.error,
+    logger = defaultLogger(),
   }: GameManagerOptions) {
     this.#registry = registry;
     this.#now = now;
-    this.#onError = onError;
+    this.#log = logger;
     this.#events.setMaxListeners(0);
     // The store is only captured by these closures, never kept on the manager, so every read and
     // write of a game goes through its lock: `#locks.read` to look, `#withLock` to change it.
@@ -108,6 +113,11 @@ export class GameManager {
     return this.#registry;
   }
 
+  /** Running totals since startup (a copy). */
+  get counters(): GameCounters {
+    return { ...this.#counters };
+  }
+
   /** Subscribe to changes of one game. Returns an unsubscribe function. */
   onChange(gameId: string, listener: (version: number) => void): () => void {
     const event = `change:${gameId}`;
@@ -140,6 +150,8 @@ export class GameManager {
     };
     // A new game is committed like any other. There's nothing to load: the id is brand new.
     await this.#withLock(record.id, (tx) => tx.commit(record, { bumpVersion: false }));
+    this.#counters.created += 1;
+    this.#log.debug({ gameId: record.id, type }, 'game created');
     return this.#toView(definition, record, null);
   }
 
@@ -162,6 +174,8 @@ export class GameManager {
       const next = record.players.length === definition.maxPlayers ? this.#start(definition, record) : record;
 
       await tx.commit(next);
+      this.#log.debug({ gameId, player: player.id }, 'player joined');
+      if (next.status !== 'lobby') this.#logStarted(next);
       return { playerId: player.id, key, game: this.#toView(definition, next, player.id) };
     });
   }
@@ -177,6 +191,7 @@ export class GameManager {
       }
       const started = this.#start(definition, record);
       await tx.commit(started);
+      this.#logStarted(started);
       return this.#toView(definition, started, player.id);
     });
   }
@@ -233,6 +248,35 @@ export class GameManager {
     record.outcome = definition.outcome(next);
     if (record.outcome) record.status = 'finished';
     await tx.commit(record, { bumpVersion: false });
+
+    // Who moved and the new version, never the move itself: in hidden-information games it's a secret.
+    if (entry.kind === 'move') this.#counters.moves += 1;
+    else this.#counters.deadlines += 1;
+    this.#log.debug(
+      { gameId: record.id, player: entry.player, version: record.version },
+      entry.kind === 'move' ? 'move' : 'deadline fired',
+    );
+    if (record.status === 'finished') this.#logFinished(record);
+  }
+
+  #logStarted(record: GameRecord): void {
+    this.#counters.started += 1;
+    this.#log.info({ gameId: record.id, type: record.type, players: record.players.length }, 'game started');
+    if (record.status === 'finished') this.#logFinished(record); // a game can be over at setup
+  }
+
+  #logFinished(record: GameRecord): void {
+    this.#counters.finished += 1;
+    this.#log.info(
+      {
+        gameId: record.id,
+        type: record.type,
+        outcome: record.outcome,
+        moves: record.moves.length,
+        durationMs: Date.parse(record.updatedAt) - Date.parse(record.createdAt),
+      },
+      'game finished',
+    );
   }
 
   /** (Re)arm the timer for a game's current deadline, if it has one. */
@@ -246,7 +290,9 @@ export class GameManager {
     const delay = Math.min(Math.max(0, at - this.#now().getTime()), MAX_TIMER_MS);
     const timer = setTimeout(() => {
       this.#timers.delete(record.id);
-      this.#fireDeadline(record.id).catch(this.#onError);
+      this.#fireDeadline(record.id).catch((err: unknown) =>
+        this.#log.error({ err, gameId: record.id }, 'deadline handler failed'),
+      );
     }, delay);
     timer.unref();
     this.#timers.set(record.id, timer);
