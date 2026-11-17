@@ -241,8 +241,9 @@ export function createGameApp(
 }
 
 /**
- * Stream a game's public view: the current state on connect, then every change.
- * Spectator view only, because EventSource can't send an Authorization header.
+ * Stream a game's view: the current state on connect, then every change. With a player's key in
+ * the Authorization header it is that player's view; without one, the spectator view. (Browsers'
+ * EventSource can't send headers, so it only gets the spectator view; fetch-based clients can.)
  */
 async function streamEvents(
   c: Context,
@@ -252,7 +253,8 @@ async function streamEvents(
   metrics: HttpMetrics,
 ): Promise<Response> {
   const gameId = c.req.param('id')!;
-  const { you } = await manager.get(gameId); // 404 before we commit to a stream
+  const key = bearer(c);
+  const { you } = await manager.get(gameId, key); // 404 or 401 before we commit to a stream
   const log = logger.child({ gameId, viewer: you ?? 'spectator' });
 
   const lastEventId = Number(c.req.header('last-event-id'));
@@ -271,7 +273,7 @@ async function streamEvents(
       queue = queue
         .then(async () => {
           if (stream.aborted) return;
-          const game = await manager.get(gameId);
+          const game = await manager.get(gameId, key);
           if (stream.aborted || game.version <= lastSent) return;
           lastSent = game.version;
           await stream.writeSSE({ id: String(game.version), event: 'state', data: JSON.stringify(game) });
