@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@gs/game-blackjack": "workspace:*",
     "@gs/game-tic-tac-toe": "workspace:*",
     "@gs/game-two-thirds": "workspace:*",
     "@gs/game-undercut": "workspace:*",

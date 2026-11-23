@@ -13,6 +13,7 @@
     "test": "LOG_LEVEL=silent node --test 'packages/*/test/**/*.test.ts' 'games/*/test/**/*.test.ts' 'apps/*/test/**/*.test.ts'",
     "demo": "node games/tic-tac-toe/cli/play.ts",
     "demo:undercut": "node games/undercut/cli/play.ts",
+    "demo:blackjack": "node games/blackjack/cli/play.ts",
     "bench": "node apps/dev-server/bench/load.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

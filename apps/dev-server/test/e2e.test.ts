@@ -31,7 +31,7 @@ describe('tic-tac-toe end to end over HTTP + SSE', () => {
 
     assert.deepEqual(
       (await games.gameTypes()).map((g) => g.type),
-      ['tic-tac-toe', 'two-thirds', 'undercut'],
+      ['tic-tac-toe', 'two-thirds', 'undercut', 'blackjack'],
     );
 
     const game = await games.create('tic-tac-toe');

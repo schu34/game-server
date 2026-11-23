@@ -178,6 +178,9 @@ importers:
 
   apps/dev-server:
     dependencies:
+      '@gs/game-blackjack':
+        specifier: workspace:*
+        version: link:../../games/blackjack
       '@gs/game-tic-tac-toe':
         specifier: workspace:*
         version: link:../../games/tic-tac-toe
@@ -234,6 +237,19 @@ importers:
       vite:
         specifier: 8.3.5
         version: 8.3.5(@types/node@24.19.2)
+
+  games/blackjack:
+    dependencies:
+      '@gs/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      immer:
+        specifier: 11.2.9
+        version: 11.2.9
+    devDependencies:
+      '@gs/client':
+        specifier: workspace:*
+        version: link:../../packages/client
 
   games/tic-tac-toe:
     dependencies:

@@ -1,11 +1,12 @@
 import { createGameServer, GameRegistry, type GameServerOptions } from '@gs/server';
+import { blackjack } from '@gs/game-blackjack';
 import { ticTacToe } from '@gs/game-tic-tac-toe';
 import { twoThirds } from '@gs/game-two-thirds';
 import { undercut } from '@gs/game-undercut';
 
 /** The one place that knows which games exist. Add new games here. */
 export function buildRegistry(): GameRegistry {
-  return new GameRegistry().register(ticTacToe).register(twoThirds).register(undercut);
+  return new GameRegistry().register(ticTacToe).register(twoThirds).register(undercut).register(blackjack);
 }
 
 export function buildServer(options: Omit<GameServerOptions, 'registry'> = {}) {

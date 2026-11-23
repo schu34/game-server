@@ -1,10 +1,10 @@
 # games-server
 
 A generic, multi-game, turn-based game server for Node.js (TypeScript, run natively by Node ≥ 24 — no build step).
-It supports games with a turn order and games where everyone decides at once. Three proof-of-concept games
+It supports games with a turn order and games where everyone decides at once. Four proof-of-concept games
 ship with it: tic-tac-toe (turns), two-thirds of the average (2–20 players decide simultaneously, with an
-optional round timer) and Undercut (3–10 players reveal two cards, then secretly play one; the lowest unique
-card wins).
+optional round timer), Undercut (3–10 players reveal two cards, then secretly play one; the lowest unique
+card wins) and blackjack (1–6 players against a dealer, with private hands).
 
 ```
 pnpm install
@@ -13,6 +13,7 @@ pnpm run typecheck
 pnpm run dev        # server on :3000 (PORT to override)
 pnpm run demo       # two bots play tic-tac-toe against the running server
 pnpm run demo:undercut  # five bots play Undercut against it
+pnpm run demo:blackjack # three bots play blackjack, showing what a player and a spectator each see
 pnpm run bench      # load test: 1000 concurrent games for 30s (see apps/dev-server/bench/load.ts for options)
 pnpm run format     # Prettier (format:check to only check)
 ```
@@ -27,6 +28,7 @@ pnpm run format     # Prettier (format:check to only check)
 | `games/tic-tac-toe`              | POC turn-based game                                                                           | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `games/two-thirds`               | POC simultaneous-decision game                                                                | `@gs/sdk`, `immer`                                                            |
 | `games/undercut`                 | Simultaneous card game: two-step rounds (pick a pair, then play one), cycles and eliminations | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
+| `games/blackjack`                | Turn-based card game with private hands, a hidden deck and a dealer                           | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `apps/dev-server`                | Wires games into the server; load test in `bench/`                                            | `@gs/server`, the games, `pino`, `pino-pretty`                                |
 | `apps/tic-tac-toe-web`           | Experimental React UI for tic-tac-toe (Vite; `pnpm run dev:web`)                              | `@gs/client`, `@gs/sdk`, the game's types, `react`, `react-dom`               |
 
@@ -51,7 +53,7 @@ A game is pure functions over JSON state (`GameDefinition<TState, TMove, TConfig
 - `applyMove(state, move, player, { now })` → `ok(nextState)` | `err(message)` — applies a parsed move; the main transition
 - `activePlayers(state)` → who may act now (several players = a simultaneous phase)
 - `outcome(state)` → `null` | `{ winners }` | `{ draw: true }`
-- `view?(state, viewer)` → redacted state. **Required for any game with hidden information.**
+- `view?(state, viewer)` → redacted state. **Required for any game with hidden information** (example: `games/blackjack`).
 - `parseConfig(input)` → validated config (`undefined` if none was sent); use `noConfig` if the game takes none
 - `deadline?(state)` / `onDeadline?(state, { now })` → timing primitives (below)
 
