@@ -13,6 +13,7 @@ pnpm run typecheck
 pnpm run dev        # server on :3000 (PORT to override)
 pnpm run demo       # two bots play tic-tac-toe against the running server
 pnpm run demo:undercut  # five bots play Undercut against it
+pnpm run bench      # load test: 1000 concurrent games for 30s (see apps/dev-server/bench/load.ts for options)
 pnpm run format     # Prettier (format:check to only check)
 ```
 
@@ -26,7 +27,7 @@ pnpm run format     # Prettier (format:check to only check)
 | `games/tic-tac-toe`              | POC turn-based game                                                                           | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
 | `games/two-thirds`               | POC simultaneous-decision game                                                                | `@gs/sdk`, `immer`                                                            |
 | `games/undercut`                 | Simultaneous card game: two-step rounds (pick a pair, then play one), cycles and eliminations | `@gs/sdk`, `immer` (its CLI demo also uses `@gs/client`, as a dev dependency) |
-| `apps/dev-server`                | Wires games into the server                                                                   | `@gs/server`, the games, `pino`, `pino-pretty`                                |
+| `apps/dev-server`                | Wires games into the server; load test in `bench/`                                            | `@gs/server`, the games, `pino`, `pino-pretty`                                |
 
 The rules live in each package's `package.json`, and pnpm enforces them: a package can only resolve the
 dependencies it declares (internal ones as `workspace:*`), so an undeclared import, such as the server
