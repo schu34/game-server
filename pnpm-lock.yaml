@@ -178,6 +178,9 @@ importers:
 
   apps/dev-server:
     dependencies:
+      '@gs/game-blackjack':
+        specifier: workspace:*
+        version: link:../../games/blackjack
       '@gs/game-tic-tac-toe':
         specifier: workspace:*
         version: link:../../games/tic-tac-toe
