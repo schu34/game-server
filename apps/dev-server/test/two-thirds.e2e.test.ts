@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
-import type { GameView, SimultaneousView } from '@gs/sdk';
-import { GameClient, GameClientError } from '@gs/client';
+import type { GameView, Json, SimultaneousView } from '@gs/sdk';
+import { GameClientError, GameServer, type PlayerSession } from '@gs/client';
 import type { TwoThirdsGame } from '@gs/game-two-thirds';
 import { buildServer } from '../src/app.ts';
 
@@ -20,24 +20,27 @@ after(() => {
 });
 
 type View = SimultaneousView<number> & { game: TwoThirdsGame };
-const sim = (game: GameView): View => {
+/** What a client sends; the game parses it into a plain number. */
+type Guess = { guess: number };
+type Player = PlayerSession<View, Guess>;
+const sim = (game: GameView<View>): View => {
   assert.ok(game.status !== 'lobby', `expected a started game, got status ${game.status}`);
-  return game.state as View;
+  return game.state;
 };
 
 /** Subscribe as a spectator, recording every view; `until` waits for a matching one. */
 async function spectate(gameId: string) {
-  const seen: GameView[] = [];
-  const waiters: { predicate: (g: GameView) => boolean; resolve: (g: GameView) => void }[] = [];
-  const sub = await new GameClient(base).subscribe(gameId, (game) => {
+  const seen: GameView<View>[] = [];
+  const waiters: { predicate: (g: GameView<View>) => boolean; resolve: (g: GameView<View>) => void }[] = [];
+  const sub = await new GameServer(base).spectate<View>(gameId).subscribe((game) => {
     seen.push(game);
     for (const w of [...waiters]) if (w.predicate(game)) (waiters.splice(waiters.indexOf(w), 1), w.resolve(game));
   });
   return {
     seen,
     close: () => sub.close(),
-    until: (predicate: (g: GameView) => boolean) =>
-      new Promise<GameView>((resolve) => {
+    until: (predicate: (g: GameView<View>) => boolean) =>
+      new Promise<GameView<View>>((resolve) => {
         const hit = seen.find(predicate);
         if (hit) resolve(hit);
         else waiters.push({ predicate, resolve });
@@ -45,45 +48,41 @@ async function spectate(gameId: string) {
   };
 }
 
-async function newGame(playerCount: number, config: unknown) {
-  const host = new GameClient(base);
-  const game = await host.create('two-thirds', config);
-  const players: GameClient[] = [];
-  for (let i = 0; i < playerCount; i++) {
-    const client = new GameClient(base);
-    await client.join(game.id, `Player ${i + 1}`);
-    players.push(client);
-  }
-  await players[0]!.start(game.id);
+async function newGame(playerCount: number, config: Json) {
+  const games = new GameServer(base);
+  const game = await games.create('two-thirds', config);
+  const players: Player[] = [];
+  for (let i = 0; i < playerCount; i++) players.push(await games.join<View, Guess>(game.id, `Player ${i + 1}`));
+  await players[0]!.start();
   return { id: game.id, players };
 }
 
 describe('two-thirds end to end (simultaneous decisions over HTTP + SSE)', () => {
   it('collects decisions in any order, keeps them hidden, and resolves when all are in', async () => {
     const { id, players } = await newGame(5, { rounds: 2 });
-    const [p1, p2, p3, p4, p5] = players as [GameClient, GameClient, GameClient, GameClient, GameClient];
+    const [p1, p2, p3, p4, p5] = players as [Player, Player, Player, Player, Player];
     const spectator = await spectate(id);
 
-    const started = (await p1.get(id))!;
+    const started = (await p1.get())!;
     assert.deepEqual(started.activePlayers, ['p1', 'p2', 'p3', 'p4', 'p5']);
     assert.equal(started.deadline, null); // no timer configured
 
     // Round 1: arbitrary order, and p3 changes their mind.
-    await p4.move(id, { guess: 77 });
-    await p3.move(id, { guess: 99 });
-    await p3.move(id, { guess: 33 });
-    await p1.move(id, { guess: 11 });
+    await p4.move({ guess: 77 });
+    await p3.move({ guess: 99 });
+    await p3.move({ guess: 33 });
+    await p1.move({ guess: 11 });
 
-    const mine = sim((await p3.get(id))!);
+    const mine = sim((await p3.get())!);
     assert.equal(mine.yourDecision, 33);
     assert.deepEqual(mine.decided, ['p1', 'p3', 'p4']);
     assert.deepEqual(mine.waitingOn, ['p2', 'p5']);
-    const theirs = sim((await p2.get(id))!);
+    const theirs = sim((await p2.get())!);
     assert.equal(theirs.yourDecision, null);
 
-    await rejects(p1.move(id, { guess: 500 }), 400);
-    await p5.move(id, { guess: 50 });
-    await p2.move(id, { guess: 0 }); // last one in → resolves
+    await rejects(p1.move({ guess: 500 }), 400);
+    await p5.move({ guess: 50 });
+    await p2.move({ guess: 0 }); // last one in → resolves
 
     const afterRound1 = await spectator.until((g) => sim(g).round === 2);
     const [result] = sim(afterRound1).game.history;
@@ -108,7 +107,7 @@ describe('two-thirds end to end (simultaneous decisions over HTTP + SSE)', () =>
       [p4, 90],
       [p5, 90],
     ] as const)
-      await client.move(id, { guess });
+      await client.move({ guess });
     const final = await spectator.until((g) => g.status === 'finished');
     assert.deepEqual(final.activePlayers, []);
     assert.ok(final.outcome && 'winners' in final.outcome);
@@ -120,12 +119,12 @@ describe('two-thirds end to end (simultaneous decisions over HTTP + SSE)', () =>
     const { id, players } = await newGame(3, { rounds: 1, roundTimeMs });
     const spectator = await spectate(id);
 
-    const started = (await players[0]!.get(id))!;
+    const started = (await players[0]!.get())!;
     assert.ok(started.deadline !== null && started.deadline > Date.now());
     assert.equal(sim(started).roundDeadline, started.deadline);
 
-    await players[0]!.move(id, { guess: 30 });
-    await players[1]!.move(id, { guess: 60 });
+    await players[0]!.move({ guess: 30 });
+    await players[1]!.move({ guess: 60 });
     // players[2] never guesses
 
     const final = await spectator.until((g) => g.status === 'finished');
@@ -134,7 +133,7 @@ describe('two-thirds end to end (simultaneous decisions over HTTP + SSE)', () =>
     assert.deepEqual(result!.guesses, { p1: 30, p2: 60 });
     assert.deepEqual(final.outcome, { winners: ['p1'] });
     assert.equal(final.deadline, null);
-    await rejects(players[2]!.move(id, { guess: 1 }), 409); // too late
+    await rejects(players[2]!.move({ guess: 1 }), 409); // too late
     spectator.close();
   });
 });
