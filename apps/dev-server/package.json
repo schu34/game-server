@@ -4,10 +4,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@gs/server": "workspace:*",
     "@gs/game-tic-tac-toe": "workspace:*",
     "@gs/game-two-thirds": "workspace:*",
-    "@gs/game-undercut": "workspace:*"
+    "@gs/game-undercut": "workspace:*",
+    "@gs/server": "workspace:*",
+    "pino": "10.4.0",
+    "pino-pretty": "13.2.0"
   },
   "devDependencies": {
     "@gs/client": "workspace:*",
