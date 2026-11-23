@@ -13,6 +13,7 @@ pnpm run typecheck
 pnpm run dev        # server on :3000 (PORT to override)
 pnpm run demo       # two bots play tic-tac-toe against the running server
 pnpm run demo:undercut  # five bots play Undercut against it
+pnpm run demo:blackjack # three bots play blackjack, showing what a player and a spectator each see
 pnpm run bench      # load test: 1000 concurrent games for 30s (see apps/dev-server/bench/load.ts for options)
 pnpm run format     # Prettier (format:check to only check)
 ```
