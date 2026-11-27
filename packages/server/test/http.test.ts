@@ -4,10 +4,12 @@ import { after, before, describe, it } from 'node:test';
 import { ErrorCode, type GameView } from '@gs/sdk';
 import { createGameServer, GameRegistry } from '../src/index.ts';
 import { counterGame, secretPickGame, type SecretPickState } from './fixtures/games.ts';
+import { LEVEL, captureLogger } from './fixtures/logger.ts';
 
+const { logger, entries } = captureLogger();
 const { server } = createGameServer({
   registry: new GameRegistry().register(counterGame).register(secretPickGame),
-  onError: () => {},
+  logger,
 });
 let base = '';
 
@@ -189,5 +191,72 @@ describe('SSE', () => {
     assert.equal(resolved.data.status, 'finished');
     assert.deepEqual((resolved.data.state as SecretPickState).history, [{ p1: 8, p2: 3 }]);
     stream.close();
+  });
+});
+
+describe('logging', () => {
+  it('logs each request with its route pattern, game, status and error code, but never keys or moves', async () => {
+    const { id, ann, ben } = await newCounterGame();
+    await call('POST', `/games/${id}/start`, { key: ann.key });
+    entries.length = 0;
+
+    const ok = await fetch(`${base}/games/${id}/moves`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ann.key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ move: { add: 3 } }),
+    });
+    await ok.json();
+    await call('POST', `/games/${id}/moves`, { body: { move: { add: 1 } }, key: ann.key }); // Ben's turn: 403
+
+    const requests = entries.filter((e) => e.msg === 'request' || e.msg === 'request rejected');
+    assert.deepEqual(
+      requests.map((e) => [e.level, e.method, e.route, e.gameId, e.status, e.code]),
+      [
+        [LEVEL.debug, 'POST', '/games/:id/moves', id, 200, undefined],
+        [LEVEL.info, 'POST', '/games/:id/moves', id, 403, 'NOT_YOUR_TURN'],
+      ],
+    );
+    assert.equal(requests[0]!.requestId, ok.headers.get('x-request-id'));
+    assert.ok(entries.some((e) => e.msg === 'move' && e.gameId === id && e.player === 'p1'));
+
+    const text = JSON.stringify(entries);
+    for (const secret of [ann.key, ben.key, '"add"']) assert.ok(!text.includes(secret), `logged ${secret}`);
+  });
+
+  it('logs games starting and finishing at info', async () => {
+    const { id, ann, ben } = await newCounterGame();
+    entries.length = 0;
+    await call('POST', `/games/${id}/start`, { key: ann.key });
+    for (let i = 0; i < 20; i++) {
+      const { body } = await call('POST', `/games/${id}/moves`, {
+        body: { move: { add: 3 } },
+        key: i % 2 ? ben.key : ann.key,
+      });
+      if (body.status === 'finished') break;
+    }
+    const lifecycle = entries.filter((e) => e.level === LEVEL.info && e.gameId === id).map((e) => e.msg);
+    assert.deepEqual(lifecycle, ['game started', 'game finished']);
+    const finished = entries.find((e) => e.msg === 'game finished')!;
+    assert.equal(finished.type, 'counter');
+    assert.ok('outcome' in finished && 'moves' in finished && 'durationMs' in finished);
+  });
+
+  it('logs streams opening and closing, with who is watching', async () => {
+    const { id } = await newCounterGame();
+    entries.length = 0;
+    const stream = await openStream(`/games/${id}/events`);
+    await stream.next();
+    stream.close();
+    for (let i = 0; i < 50 && !entries.some((e) => e.msg === 'stream closed'); i++)
+      await new Promise((r) => setTimeout(r, 10));
+    const streamLogs = entries.filter((e) => e.msg.startsWith('stream'));
+    assert.deepEqual(
+      streamLogs.map((e) => [e.msg, e.gameId, e.viewer]),
+      [
+        ['stream opened', id, 'spectator'],
+        ['stream closed', id, 'spectator'],
+      ],
+    );
+    assert.equal(streamLogs[1]!.sent, 1);
   });
 });
