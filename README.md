@@ -89,15 +89,15 @@ whatever was submitted, and `resolve`'s `missing` lists who didn't decide, so ea
 
 Player keys are issued once at join time; send them as `Authorization: Bearer <key>`. Only the key's hash is stored.
 
-| Request                                            | Auth     |                                                                          |
-| -------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `GET /game-types`                                  |          | registered games                                                         |
-| `POST /games` `{type, config?}`                    |          | create (lobby)                                                           |
-| `POST /games/:id/players` `{name}`                 |          | join → `{playerId, key, game}`; auto-starts when full                    |
-| `POST /games/:id/start`                            | key      | start early (≥ minPlayers)                                               |
-| `GET /games/:id[?since=N]`                         | optional | game view; `{unchanged:true}` if version ≤ N                             |
-| `POST /games/:id/moves` `{move, expectedVersion?}` | key      | submit a move                                                            |
-| `GET /games/:id/events`                            |          | SSE stream of spectator views (`id:` = version; honours `Last-Event-ID`) |
+| Request                                            | Auth     |                                                                                                                    |
+| -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /game-types`                                  |          | registered games                                                                                                   |
+| `POST /games` `{type, config?}`                    |          | create (lobby)                                                                                                     |
+| `POST /games/:id/players` `{name}`                 |          | join → `{playerId, key, game}`; auto-starts when full                                                              |
+| `POST /games/:id/start`                            | key      | start early (≥ minPlayers)                                                                                         |
+| `GET /games/:id[?since=N]`                         | optional | game view; `{unchanged:true}` if version ≤ N                                                                       |
+| `POST /games/:id/moves` `{move, expectedVersion?}` | key      | submit a move                                                                                                      |
+| `GET /games/:id/events`                            | optional | SSE stream of game views: the player's with a key, else the spectator's (`id:` = version; honours `Last-Event-ID`) |
 
 Errors are `{error: {code, message}}`: 400 invalid request/move, 401 bad key, 403 not your turn, 404, 409 wrong
 status/version. Don't use `expectedVersion` in simultaneous-move games: players submitting at the same time would
@@ -133,5 +133,5 @@ its logs at all, so watch utilization rather than waiting for errors.
 
 ## Not in v1
 
-Persistent accounts, per-player SSE streams (needs a query-string token), automatic SSE reconnection in
-`@gs/client`, and removing finished or abandoned games.
+Persistent accounts, per-player SSE streams for browsers' `EventSource` (which can't send a key; the
+`fetch`-based `@gs/client` can), and removing finished or abandoned games.

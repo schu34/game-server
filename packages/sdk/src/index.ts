@@ -145,11 +145,17 @@ type GameViewBase = {
 /** A game still waiting for players. It has no state yet: `setup` runs when the game starts. */
 export type LobbyGameView = GameViewBase & { status: 'lobby' };
 
-/** A game that has started. `state` has already been passed through the game's `view`. */
-export type StartedGameView = GameViewBase & { status: 'active' | 'finished'; state: Json };
+/**
+ * A game that has started. `state` has already been passed through the game's `view`.
+ * `TState` is what that view returns; the wire carries plain JSON, so it is the client's claim.
+ */
+export type StartedGameView<TState extends Json = Json> = GameViewBase & {
+  status: 'active' | 'finished';
+  state: TState;
+};
 
 /** What any client sees of a game. Check `status` to narrow it: only started games have `state`. */
-export type GameView = LobbyGameView | StartedGameView;
+export type GameView<TState extends Json = Json> = LobbyGameView | StartedGameView<TState>;
 
 export type JoinResponse = { playerId: PlayerId; key: string; game: GameView };
 

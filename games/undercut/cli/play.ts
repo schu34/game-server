@@ -6,29 +6,31 @@
  *   pnpm run demo:undercut [url]     # in another (default http://localhost:3000)
  */
 import type { GameView, SimultaneousView } from '@gs/sdk';
-import { GameClient } from '@gs/client';
+import { GameServer, type PlayerSession } from '@gs/client';
 import { cycleOf, type Decision, type UndercutGame } from '../src/index.ts';
 
 const baseUrl = process.argv[2] ?? 'http://localhost:3000';
 const NAMES = ['Ada', 'Ben', 'Cy', 'Dee', 'Eli'];
 
 type View = SimultaneousView<Decision> & { game: UndercutGame };
-const gameOf = (view: GameView) => (view.status === 'lobby' ? null : (view.state as View).game);
+type Bot = PlayerSession<View, Decision>;
+const gameOf = (view: GameView<View>) => (view.status === 'lobby' ? null : view.state.game);
 
-const bots = NAMES.map(() => new GameClient(baseUrl));
-const spectator = new GameClient(baseUrl);
+const server = new GameServer(baseUrl);
 
-const game = await bots[0]!.create('undercut', { cycles: 3 });
+const game = await server.create('undercut', { cycles: 3 });
 console.log(`Created game ${game.id}`);
-for (const [i, bot] of bots.entries()) await bot.join(game.id, NAMES[i]!);
-const byId = new Map(bots.map((bot) => [bot.playerId!, bot]));
+const bots: Bot[] = [];
+for (const botName of NAMES) bots.push(await server.join<View, Decision>(game.id, botName));
+const byId = new Map(bots.map((bot) => [bot.playerId, bot]));
 const name = (id: string) => NAMES[bots.indexOf(byId.get(id)!)]!;
+const spectator = server.spectate<View>(game.id);
 
 let finished!: () => void;
 const gameOver = new Promise<void>((resolve) => (finished = resolve));
 let printedRounds = 0;
 let printedCycles = 0;
-const subscription = await spectator.subscribe(game.id, (view) => {
+const subscription = await spectator.subscribe((view) => {
   const state = gameOf(view);
   if (!state) return;
   for (const result of state.history.slice(printedRounds)) {
@@ -47,7 +49,7 @@ const subscription = await spectator.subscribe(game.id, (view) => {
   if (view.status === 'finished') finished();
 });
 
-await bots[0]!.start(game.id);
+await bots[0]!.start();
 
 const pickTwo = (hand: number[]) => {
   const shuffled = [...hand].sort(() => Math.random() - 0.5);
@@ -55,16 +57,16 @@ const pickTwo = (hand: number[]) => {
 };
 
 for (;;) {
-  const view = (await spectator.get(game.id))!;
+  const view = (await spectator.get())!;
   const state = gameOf(view);
   if (!state || view.status === 'finished') break;
   // Everyone still to decide submits, in random order, just as real players would.
   for (const id of [...view.activePlayers].sort(() => Math.random() - 0.5)) {
-    const decision =
+    const decision: Decision =
       state.step === 'pick'
         ? { pick: pickTwo(state.seats[id]!.hand) }
         : { play: state.pairs[id]![Math.floor(Math.random() * 2)]! };
-    await byId.get(id)!.move(game.id, decision);
+    await byId.get(id)!.move(decision);
   }
   await new Promise((r) => setTimeout(r, 50));
 }
@@ -72,7 +74,7 @@ for (;;) {
 await gameOver;
 subscription.close();
 
-const final = gameOf((await spectator.get(game.id))!)!;
+const final = gameOf((await spectator.get())!)!;
 console.log('\nFinal standings:');
 const order = ['winner', 'playing', 'eliminated', 'safe'];
 const standings = Object.entries(final.seats).sort(
